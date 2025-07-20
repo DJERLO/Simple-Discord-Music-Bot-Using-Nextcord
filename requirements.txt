@@ -1,0 +1,5 @@
+nextcord
+setuptools
+yt-dlp
+PyNaCl
+python-dotenv

@@ -1,0 +1,22 @@
+# .gitignore
+.env
+venv/
+# Ignore Python bytecode files
+__pycache__/
+*.py[cod]
+# Ignore log files
+*.log
+# Ignore database files
+*.sqlite3
+# Ignore configuration files
+config.json
+# Ignore IDE/editor specific files
+.vscode/
+.idea/
+# Ignore system files
+.DS_Store
+Thumbs.db
+# Ignore temporary files
+*.tmp
+cookies.txt
+reports.db
