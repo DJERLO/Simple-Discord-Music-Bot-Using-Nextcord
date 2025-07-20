@@ -109,6 +109,7 @@ async def play(interaction: Interaction, song_query: str):
 
     guild_id = str(interaction.guild_id)
     voice_channel = interaction.user.voice.channel
+    user = interaction.user 
 
     if voice_channel is None:
         await interaction.followup.send("You must be in a voice channel.")
@@ -183,9 +184,9 @@ async def play(interaction: Interaction, song_query: str):
     else:
         # If nothing is playing, start playing the first song
         await interaction.followup.send(f"Playing: **{tracks[0].get('title', 'Untitled')}**", ephemeral=True)
-        await play_next_song(voice_client, guild_id, interaction.channel)
+        await play_next_song(voice_client, guild_id, interaction.channel, user)
 
-async def play_next_song(voice_client, guild_id, channel):
+async def play_next_song(voice_client, guild_id, channel, user):
     if SONG_QUEUES[guild_id]:
         audio_url, title, webpage_url, thumbnail = SONG_QUEUES[guild_id].popleft()
 
@@ -216,6 +217,10 @@ async def play_next_song(voice_client, guild_id, channel):
             color=nextcord.Color.green()
         )
         embed.set_image(url=thumbnail)
+        embed.set_footer(
+            text=f"Requested by {user.display_name}",
+            icon_url= user.avatar.url if user.avatar else None
+        )
 
         asyncio.create_task(channel.send(embed=embed))
     else:
