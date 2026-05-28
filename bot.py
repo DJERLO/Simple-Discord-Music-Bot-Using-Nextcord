@@ -378,19 +378,50 @@ async def queue(interaction: Interaction):
     view = QueueSongList(songs_list, interaction.user, guild_id)
     await interaction.response.send_message(embed=view.get_embed(), view=view, ephemeral=True)
 
-@bot.slash_command(name="shutdown", description="Shut down the bot (Admin only).")
+@bot.slash_command(name="restart", description="Gracefully clean up and restart the bot session (Admin only).")
 @commands.has_permissions(administrator=True)
-async def shutdown(interaction: Interaction):
+async def restart(interaction: Interaction):
     """
-    Shuts down the bot gracefully. 
-    Only users with administrator permissions can execute this command.
+    Gracefully disconnects from voice channels, cleans up data, and restarts the bot script.
+    This command is intended for administrators to reset the bot without needing to manually stop and start the script.
     Args:
         interaction (Interaction): The interaction object from the slash command.
     returns:
         None
     """
-    await interaction.response.send_message("Shutting down...")
+    await interaction.response.send_message("🔄 Disconnecting from voice channels and restarting system...", ephemeral=True)
+    
+    guild_id_str = str(interaction.guild_id)
+    
+    # 1. Clear out internal queue references so memory is flushed
+    if guild_id_str in SONG_QUEUES:
+        SONG_QUEUES[guild_id_str].clear()
+
+    # 2. Safely wipe out the persistent music player display message if it exists
+    if guild_id_str in ACTIVE_PLAYERS and ACTIVE_PLAYERS[guild_id_str]:
+        try:
+            await ACTIVE_PLAYERS[guild_id_str].delete()
+        except Exception:
+            pass
+        ACTIVE_PLAYERS[guild_id_str] = None
+
+    # 3. Disconnect cleanly from the voice channel to prevent leaving ghost connections
+    voice_client = interaction.guild.voice_client
+    if voice_client and voice_client.is_connected():
+        if voice_client.is_playing() or voice_client.is_paused():
+            voice_client.stop()
+        await voice_client.disconnect()
+
+    # 4. Clear streaming presence indicator
+    await bot.change_presence(activity=None)
+
+    # 5. Let the background event loops settle for a brief moment before shutting down connection
+    await asyncio.sleep(1)
     await bot.close()
+
+    # 6. Re-execute the python script instance using current environment boundaries
+    import sys
+    os.execv(sys.executable, [sys.executable] + sys.argv)
 
 # Run the bot with your token
 bot.run(bot_token)
