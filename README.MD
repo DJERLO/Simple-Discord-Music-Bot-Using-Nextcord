@@ -10,41 +10,61 @@ For my version, I used **Nextcord** as the main Discord API wrapper.
 
 ## Features
 
-* Play songs or playlists from YouTube
-* Queue management (add, view, skip, pause, resume, stop)
-* Interactive queue display
-* Playlist support
-* Slash commands for all actions
+* **High-Fidelity Playback:** Stream individual tracks or complete playlists directly from YouTube via `yt-dlp`.
+* **State Persistence UI:** Displays interactive "Now Playing" rich embed updates straight to active server voice channels.
+* **Paginated Navigation:** View deep music tracks using an organized, session-locked pagination view.
+* **Graceful Session Lifecycles:** Safe server cleanup loops that free up memory allocations upon disconnecting.
 
 ---
 
-## Setup
+## Architecture Dependencies
 
-1. **Clone the repository**
+To implement this audio platform local testing pipeline successfully, your environment requires a binary mapping for **FFmpeg**. Without setting up this layout in your root project architecture, streaming audio streams onto voice sessions will fail.
 
-   ```bash
-   git clone <repo-url>
-   cd <repo-directory>
-   ```
+## ⚡ Crucial Prerequisite: FFmpeg Installation
 
-2. **Install dependencies**
+> ⚠️ **CRITICAL FOR TESTING:** This music bot **will not work** and will throw errors during playback if the FFmpeg binaries are missing from the project directory. 
 
-   ```bash
-   pip install -r requirements.txt
-   ```
+Before trying to test the music bot, you must download the FFmpeg essentials build for Windows and place the executables inside the codebase workspace structure:
 
-3. **Set up environment variables**
-   Create a `.env` file in the project root and add your Discord bot token:
+1. Create a folder named `bin` in your project root, and a folder named `ffmpeg` inside it (`bin/ffmpeg/`).
+2. Download the FFmpeg binaries and copy `ffmpeg.exe`, `ffplay.exe`, and `ffprobe.exe` directly into that folder.
 
-   ```env
-   BOT_TOKEN=your_discord_bot_token
-   ```
+Your project file tree structure **must** look exactly like this to test playback:
+```text
+testbot/
+├── bin/
+│   └── ffmpeg/
+│       ├── ffmpeg.exe      <-- Required
+│       ├── ffplay.exe      <-- Required
+│       └── ffprobe.exe     <-- Required
+├── bot.py
+├── views.py
+├── .env
+└── requirements.txt
+```
+*(Note: These heavy binary .exe files are configured via .gitignore to prevent them from hitting your remote GitHub storage limits).*
 
-4. **Install FFmpeg**
-   Make sure FFmpeg is either:
 
-   * Located at `bin/ffmpeg/ffmpeg.exe`, **or**
-   * Added to your system `PATH`.
+## Features
+
+* **High-Quality Streaming:** Utilizes `yt-dlp` to extract and process audio feeds safely.
+* **Smart Presence Indicators:** Shows the currently playing track live as a Discord Streaming activity status.
+* **Persistent Display Cleanup:** Automatically destroys active embed tracking modules when streams stop to keep chat rooms clean.
+* **Interactive Interface:** Built-in paginated system for inspecting extensive server queue structures seamlessly.
+* **Graceful Session Restarts:** Includes a clean process-manager friendly restart routine instead of a hard, loop-breaking crash.
+
+---
+
+## Slash Commands
+
+* `/play <song or playlist>` — Streams a song directly or queues up an entire YouTube playlist link.
+* `/skip` — Skips the track currently active in the channel.
+* `/pause` — Pauses current audio playback.
+* `/resume` — Resumes paused music tracking.
+* `/queue` — Launches a paginated interactive embed panel to browse the active song queue.
+* `/stop` — Safely halts active audio, clears internal arrays, and cleanly drops voice server gateway connections.
+* `/restart` — Clears server instances, releases voice nodes gracefully, and forces a seamless session reload (Admin Only).
 
 ---
 
@@ -55,20 +75,6 @@ Run the bot with:
 ```bash
 python bot.py
 ```
-
----
-
-## Slash Commands
-
-* `/play <song or playlist>` — Play a song or add it to the queue
-* `/skip` — Skip the current song
-* `/pause` — Pause playback
-* `/resume` — Resume playback
-* `/stop` — Stop playback and clear the queue
-* `/queue` — Show the current queue
-
----
-
 ## Extending (Future Ideas?!)
 
 Check the `TODO` comments in the code for possible improvements:
