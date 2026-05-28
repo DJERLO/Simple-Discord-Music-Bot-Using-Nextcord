@@ -1,5 +1,4 @@
 nextcord
-setuptools
+nextcord[voice]
 yt-dlp
-PyNaCl
 python-dotenv

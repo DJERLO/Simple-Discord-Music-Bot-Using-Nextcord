@@ -20,3 +20,5 @@ Thumbs.db
 *.tmp
 cookies.txt
 reports.db
+bin/ffmpeg/
+*.exe
