@@ -1,4 +1,7 @@
 nextcord
 nextcord[voice]
-yt-dlp
 python-dotenv
+wavelink
+pytest
+pytest-asyncio
+pytest-watch

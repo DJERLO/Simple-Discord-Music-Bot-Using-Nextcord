@@ -1,26 +1,15 @@
 import os
-import asyncio
 import time
 from dotenv import load_dotenv 
 import nextcord
 from nextcord.ext import commands
 from nextcord import Interaction
-import yt_dlp
-from collections import deque
+import wavelink
 from views import QueueView as QueueSongList
 
 # Load variables from the .env file
 load_dotenv()
 bot_token = os.getenv('BOT_TOKEN')
-
-# Function to search for a song using yt-dlp
-async def search_ytdlp_async(query, ydl_opts):
-    loop = asyncio.get_running_loop()
-    return await loop.run_in_executor(None, lambda: _extract(query, ydl_opts))
-
-def _extract(query, ydl_opts):
-    with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-        return ydl.extract_info(query, download=False)
 
 # Set up the bot with the necessary intents
 intents = nextcord.Intents.default()
@@ -28,17 +17,33 @@ intents.message_content = True  # Enables the message content intent
 
 bot = commands.Bot(command_prefix='/', intents=intents)
 
-# Create the structure for queueing songs - Dictionary of queues
-SONG_QUEUES = {}
+# Compatibility class to bridge Wavelink Player with Nextcord's VoiceProtocol
+class WavelinkPlayer(wavelink.Player, nextcord.VoiceProtocol):
+    pass
+
+# Helper functions for time and progress display
+def format_time(ms: int) -> str:
+    """Formats milliseconds into M:SS."""
+    seconds = int(ms // 1000)
+    minutes, seconds = divmod(seconds, 60)
+    return f"{minutes}:{seconds:02d}"
+
+def get_track_artwork(track: wavelink.Playable) -> str:
+    """Helper to retrieve the best available artwork for a track."""
+    artwork = getattr(track, 'artwork', None) or getattr(track, 'thumbnail', None)
+    if not artwork and 'youtube' in getattr(track, 'source', ''):
+        return f"https://i.ytimg.com/vi/{track.identifier}/hqdefault.jpg"
+    return artwork
+
 # Track the active music player message per guild
 ACTIVE_PLAYERS = {}
 
 @bot.event
 async def on_ready():
-    print(f'We have logged in as {bot.user}')
-    print('Syncing slash commands...')
+    """Connect to Lavalink node (defined in application.yml) when the bot is ready"""
+    node: wavelink.Node = wavelink.Node(uri="http://127.0.0.1:2333", password="youshallnotpass")
+    await wavelink.Pool.connect(nodes=[node], client=bot)
     await bot.sync_application_commands()
-    print('Slash commands synced.')
 
 # Slash Command to skip the current song
 @bot.slash_command(name="skip", description="Skips the current playing song")
@@ -51,8 +56,9 @@ async def skip(interaction: Interaction):
     returns:
         None
     """
-    if interaction.guild.voice_client and (interaction.guild.voice_client.is_playing() or interaction.guild.voice_client.is_paused()):
-        interaction.guild.voice_client.stop()
+    vc: WavelinkPlayer = interaction.guild.voice_client
+    if vc and (vc.playing or vc.paused):
+        await vc.skip()
         await interaction.response.send_message("Skipped the current song.", ephemeral=True)
     else:
         await interaction.response.send_message("Not playing anything to skip.")
@@ -68,18 +74,18 @@ async def pause(interaction: Interaction):
     returns:
         None    
     """
-    voice_client = interaction.guild.voice_client
+    vc: WavelinkPlayer = interaction.guild.voice_client
 
     # Check if the bot is in a voice channel
-    if voice_client is None:
+    if vc is None:
         return await interaction.response.send_message("I'm not in a voice channel.", ephemeral=True)
 
     # Check if something is actually playing
-    if not voice_client.is_playing():
+    if not vc.playing:
         return await interaction.response.send_message("Nothing is currently playing.", ephemeral=True)
     
     # Pause the track
-    voice_client.pause()
+    await vc.pause(True)
     await interaction.response.send_message("Playback paused!", ephemeral=True)
 
 # Slash Command to resume the currently paused song
@@ -93,18 +99,18 @@ async def resume(interaction: Interaction):
     returns:
         None
     """
-    voice_client = interaction.guild.voice_client
+    vc: WavelinkPlayer = interaction.guild.voice_client
 
     # Check if the bot is in a voice channel
-    if voice_client is None:
+    if vc is None:
         return await interaction.response.send_message("I'm not in a voice channel.", ephemeral=True)
 
     # Check if it's actually paused
-    if not voice_client.is_paused():
+    if not vc.paused:
         return await interaction.response.send_message("I’m not paused right now.", ephemeral=True)
     
     # Resume playback
-    voice_client.resume()
+    await vc.pause(False)
     await interaction.response.send_message("Playback resumed!", ephemeral=True)
 
 # Slash Command to stop playback and clear the queue
@@ -117,246 +123,158 @@ async def stop(interaction: Interaction):
     returns:
         None
     """
-    voice_client = interaction.guild.voice_client
+    vc: WavelinkPlayer = interaction.guild.voice_client
 
-    if not voice_client or not voice_client.is_connected():
+    if not vc:
         return await interaction.response.send_message("I'm not connected to any voice channel.", ephemeral=True)
 
     guild_id_str = str(interaction.guild_id)
-    if guild_id_str in SONG_QUEUES:
-        SONG_QUEUES[guild_id_str].clear()
+    vc.queue.clear()
 
     # Dynamic Cleanup of Persistent Voice Channel Embed Interface
-    if guild_id_str in ACTIVE_PLAYERS and ACTIVE_PLAYERS[guild_id_str]:
+    if guild_id_str in ACTIVE_PLAYERS:
         try:
             await ACTIVE_PLAYERS[guild_id_str].delete()
         except Exception:
             pass
         ACTIVE_PLAYERS[guild_id_str] = None
 
-    if voice_client.is_playing() or voice_client.is_paused():
-        voice_client.stop()
-
-    await voice_client.disconnect()
+    await vc.disconnect()
     await bot.change_presence(activity=None)
     await interaction.response.send_message("Stopped playback and disconnected", ephemeral=True)
 
 @bot.slash_command(name="play", description="Play a song or add it to the queue.")
-async def play(interaction: Interaction, song_query: str):
+async def play(interaction: Interaction, song: str):
     """
     Plays a song or adds it to the queue.
     Args:
         interaction (Interaction): The interaction object from the slash command.
-        song_query (str): The song to play or add to the queue.
+        song (str): The song to play or add to the queue.
     returns:
         None
     """
     await interaction.response.defer()
-
-    guild_id = str(interaction.guild_id)
 
     if not interaction.user.voice or not interaction.user.voice.channel:
         await interaction.followup.send("You must be in a voice channel.", ephemeral=True, delete_after=5.0)
         return
 
     voice_channel = interaction.user.voice.channel
-    user = interaction.user
-    voice_client = interaction.guild.voice_client 
+    vc: WavelinkPlayer = interaction.guild.voice_client 
 
-    if voice_client is None:
-        voice_client = await voice_channel.connect()
-    elif voice_channel != voice_client.channel:
-        await voice_client.move_to(voice_channel)
+    if not vc:
+        vc = await voice_channel.connect(cls=WavelinkPlayer)
+    elif voice_channel != vc.channel:
+        await vc.move_to(voice_channel)
 
-    # Base configuration options for yt-dlp
-    ydl_options = {
-        "format": "bestaudio[abr<=96]/bestaudio",
-        "quiet": True,                
-        "no_warnings": True,          
-        "logtostderr": False,         
-        "ignoreerrors": True,
-        "youtube_include_dash_manifest": False,
-        "youtube_include_hls_manifest": False,
-    }
-
-    # Evaluate input pattern: URL vs Search Keywords
-    is_url = song_query.startswith("http://") or song_query.startswith("https://")
-    is_playlist = "youtube.com/playlist" in song_query or "&list=" in song_query
+    # Search for the track(s) using Wavelink's optimized search
+    tracks = await wavelink.Playable.search(song)
     
-    if is_playlist:
-        ydl_options["extract_flat"] = "in_playlist"
-        query = song_query  
-    elif is_url:
-        query = song_query
-    else:
-        query = f"ytsearch1:{song_query}"  
-
-    results = await search_ytdlp_async(query, ydl_options)
-    
-    if not results:
+    if not tracks:
         await interaction.followup.send("No results found.", ephemeral=True, delete_after=5.0)
         return
 
-    # Handle multi-source structural formatting differences
-    if "entries" in results:
-        tracks = [t for t in results["entries"] if t is not None]
-    else:
-        tracks = [results]
+    # Store requester data in the track extras
+    extras = {
+        'requester': interaction.user.display_name,
+        'avatar': interaction.user.avatar.url if interaction.user.avatar else None
+    }
 
-    if not tracks:
-        await interaction.followup.send("No playable items found.", ephemeral=True, delete_after=5.0)
-        return
+    if isinstance(tracks, wavelink.Playlist):
+        for track in tracks:
+            track.extras = extras
+        await vc.queue.put_wait(tracks)
+        message = f"Added playlist **{tracks.name}** ({len(tracks)} tracks) to queue."
+        thumbnail = getattr(tracks, 'artwork', None) or (tracks[0].artwork if tracks else None)
+    else:
+        track = tracks[0]
+        track.extras = extras
+        await vc.queue.put_wait(track)
+        message = f"**{track.title}** by **{track.author}** ({format_time(track.length)})"
+        thumbnail = get_track_artwork(track)
+
+    embed = nextcord.Embed(title="Added to Queue", description=message, color=nextcord.Color.orange())
+    if thumbnail:
+        embed.set_image(url=thumbnail)
+    embed.set_footer(text=f"Requested by {interaction.user.display_name}", icon_url=extras['avatar'])
     
-    if SONG_QUEUES.get(guild_id) is None:
-        SONG_QUEUES[guild_id] = deque()
+    await interaction.followup.send(embed=embed, ephemeral=True, delete_after=10.0)
 
-    for track in tracks:
-        video_url = track.get("webpage_url") or track.get("url") or (f"https://www.youtube.com/watch?v={track.get('id')}" if track.get('id') else song_query)
-        title = track.get("title", "Untitled Track")
-        thumbnail = track.get("thumbnail")
-        duration = track.get("duration")
+    if not vc.playing:
+        await vc.play(vc.queue.get())
 
-        SONG_QUEUES[guild_id].append((video_url, title, thumbnail, duration))
+@bot.event
+async def on_wavelink_track_start(payload: wavelink.TrackStartEventPayload):
+    player: WavelinkPlayer = payload.player
+    track: wavelink.Playable = payload.track
+    guild_id = str(player.guild.id)
 
-    if voice_client.is_playing() or voice_client.is_paused():
-        first_track = tracks[0]
-        embed = nextcord.Embed(
-            title="Added to Queue",
-            description=(
-                f"Added a playlist with **{len(tracks)}** tracks." if len(tracks) > 1 
-                else f"**{first_track.get('title', 'Untitled Track')}**"
-            ),
-            color=nextcord.Color.orange()
+    embed = nextcord.Embed(
+        title="💿 Now Playing",
+        description=f"[{track.title}]({track.uri})",
+        color=nextcord.Color.green()
+    )
+    
+    embed.add_field(name="Artist", value=track.author, inline=True)
+    embed.add_field(name="Duration", value=format_time(track.length), inline=True)
+    
+    artwork = get_track_artwork(track)
+
+    if artwork:
+        embed.set_image(url=artwork)
+    
+    requester = getattr(track.extras, 'requester', 'Unknown')
+    avatar = getattr(track.extras, 'avatar', None)
+    embed.set_footer(text=f"Requested by {requester} | In Voice Channel", icon_url=avatar)
+
+    # Update Presence mapping
+    is_valid_stream_domain = any(domain in track.uri for domain in ["youtube.com", "youtu.be", "twitch.tv"])
+    presence_url = track.uri if is_valid_stream_domain else "https://www.youtube.com"
+    
+    await bot.change_presence(
+        activity=nextcord.Activity(
+            type=nextcord.ActivityType.listening,
+            name=f"{track.title} by {track.author} [{format_time(track.length)}]",
+            timestamps={"start": int(time.time()), "end": int(time.time() + (track.length // 1000))}
         )
-        if first_track.get("thumbnail"):
-            embed.set_image(url=first_track.get("thumbnail"))
-        embed.set_footer(
-            text=f"Requested by {interaction.user.display_name}",
-            icon_url=interaction.user.avatar.url if interaction.user.avatar else None
-        )
-        await interaction.followup.send(embed=embed, ephemeral=True)
-    else:
-        await interaction.followup.send(f"Processing playback...", ephemeral=True, delete_after=2.0)
-        await play_next_song(voice_client, guild_id, interaction.channel, user)
+    )
 
-
-async def play_next_song(voice_client, guild_id, channel, user):
-    """
-    Plays the next song in the queue for the specified guild. 
-    If the queue is empty, 
-    it disconnects the bot and clears the presence.
-
-    Args:
-        voice_client (nextcord.VoiceClient): The voice client connected to the guild.
-        guild_id (str): The ID of the guild.
-        channel (nextcord.TextChannel): The text channel to send updates to.
-        user (nextcord.User): The user who requested the song.
-
-    Returns:
-        None
-    """
-    if guild_id in SONG_QUEUES and SONG_QUEUES[guild_id]:
-        video_url, title, thumbnail, duration = SONG_QUEUES[guild_id].popleft()
-
-        ydl_options = {
-            "format": "bestaudio[abr<=96]/bestaudio",
-            "quiet": True,
-            "no_warnings": True,
-        }
-        
-        try:
-            track_info = await search_ytdlp_async(video_url, ydl_options)
-            if "entries" in track_info and track_info["entries"]:
-                track_info = track_info["entries"][0]
-            
-            audio_url = track_info.get("url")
-            webpage_url = track_info.get("webpage_url", video_url)
-
-            if not thumbnail:
-                thumbnail = track_info.get("thumbnail")
-            if not duration:
-                duration = track_info.get("duration")
-        except Exception as e:
-            print(f"Error extracting {title}: {e}")
-            asyncio.create_task(channel.send(f"Could not play **{title}**, skipping...", delete_after=5.0))
-            await play_next_song(voice_client, guild_id, channel, user)
-            return
-
-        ffmpeg_options = {
-            "before_options": "-reconnect 1 -reconnect_streamed 1 -reconnect_delay_max 5",
-            "options": "-vn -c:a libopus -b:a 96k", 
-        }
-
-        ffmpeg_path = os.path.join("bin", "ffmpeg", "ffmpeg.exe")
-        source = nextcord.FFmpegOpusAudio(audio_url, **ffmpeg_options, executable=ffmpeg_path)
-
-        # Gateway-safe Presence Mapping
-        is_valid_stream_domain = any(domain in webpage_url for domain in ["youtube.com", "youtu.be", "twitch.tv"])
-        presence_url = webpage_url if is_valid_stream_domain else "https://www.youtube.com"
-
-        await bot.change_presence(
-            activity=nextcord.Streaming(
-                name=title,
-                url=str(presence_url),
-                platform="Twitch" if "twitch.tv" in webpage_url else "YouTube"
-            ),
-            status=nextcord.Status.online
-        )
-
-        def after_play(error):
-            if error:
-                print(f"Error playing {title}: {error}")
-            asyncio.run_coroutine_threadsafe(play_next_song(voice_client, guild_id, channel, user), bot.loop)
-
-        if voice_client and voice_client.is_connected():
-            voice_client.play(source, after=after_play)
-        else:
-            return
-        
-        embed = nextcord.Embed(
-            title="💿 Now Playing",
-            description=f"[{title}]({webpage_url})",
-            color=nextcord.Color.green()
-        )
-        if thumbnail:
-            embed.set_image(url=thumbnail)
-        embed.set_footer(
-            text=f"Requested by {user.display_name} | In Voice Channel",
-            icon_url=user.avatar.url if user.avatar else None
-        )
-
-        v_channel = voice_client.channel
-
-        try:
-            if guild_id in ACTIVE_PLAYERS and ACTIVE_PLAYERS[guild_id]:
-                try:
-                    await ACTIVE_PLAYERS[guild_id].edit(embed=embed)
-                except Exception:
-                    ACTIVE_PLAYERS[guild_id] = await v_channel.send(embed=embed)
-            else:
-                ACTIVE_PLAYERS[guild_id] = await v_channel.send(embed=embed)
-        except Exception as e:
-            print(f"Could not send to voice channel text: {e}")
-            if guild_id in ACTIVE_PLAYERS and ACTIVE_PLAYERS[guild_id]:
-                try:
-                    await ACTIVE_PLAYERS[guild_id].edit(embed=embed)
-                except Exception:
-                    ACTIVE_PLAYERS[guild_id] = await channel.send(embed=embed)
-            else:
-                ACTIVE_PLAYERS[guild_id] = await channel.send(embed=embed)
-
-    else:
-        if guild_id in ACTIVE_PLAYERS and ACTIVE_PLAYERS[guild_id]:
+    # Update or send the player interface message
+    try:
+        msg = ACTIVE_PLAYERS.get(guild_id)
+        if msg:
             try:
-                await ACTIVE_PLAYERS[guild_id].delete()
+                await msg.edit(embed=embed)
+                return
+            except Exception:
+                pass
+        ACTIVE_PLAYERS[guild_id] = await player.channel.send(embed=embed)
+    except Exception:
+        ACTIVE_PLAYERS[guild_id] = None
+
+@bot.event
+async def on_wavelink_track_end(payload: wavelink.TrackEndEventPayload):
+    player: WavelinkPlayer = payload.player
+    if not player or not player.guild:
+        return
+
+    guild_id = str(player.guild.id)
+
+    if not player.queue.is_empty:
+        next_track = player.queue.get()
+        await player.play(next_track)
+    else:
+        # Clean up the interface when the queue finishes
+        msg = ACTIVE_PLAYERS.get(guild_id)
+        if msg:
+            try:
+                await msg.delete()
             except Exception:
                 pass
             ACTIVE_PLAYERS[guild_id] = None
 
-        if voice_client and voice_client.is_connected():
-            await voice_client.disconnect()
+        await player.disconnect()
         await bot.change_presence(activity=None)
-        SONG_QUEUES[guild_id] = deque()
 
 @bot.slash_command(name="queue", description="Show the current music queue.")
 async def queue(interaction: Interaction):
@@ -369,14 +287,19 @@ async def queue(interaction: Interaction):
     returns:
         None
     """
-    guild_id = str(interaction.guild_id)
-    if guild_id not in SONG_QUEUES or not SONG_QUEUES[guild_id]:
+    vc: WavelinkPlayer = interaction.guild.voice_client
+    if not vc or vc.queue.is_empty:
         await interaction.response.send_message("The queue is currently empty.", ephemeral=True)
         return
 
-    songs_list = list(SONG_QUEUES[guild_id])  # Make a copy
-    view = QueueSongList(songs_list, interaction.user, guild_id)
+    # Convert Wavelink queue to the format expected by our QueueView
+    songs_list = []
+    for track in vc.queue:
+        songs_list.append((track.uri, track.title, track.artwork, track.length / 1000))
+    
+    view = QueueSongList(songs_list, interaction.user, str(interaction.guild_id))
     await interaction.response.send_message(embed=view.get_embed(), view=view, ephemeral=True)
+    view.message = await interaction.original_message()
 
 @bot.slash_command(name="clearqueue", description="Clear the current music queue.")
 async def clearqueue(interaction: Interaction):
@@ -387,9 +310,9 @@ async def clearqueue(interaction: Interaction):
     returns:
         None
     """
-    guild_id = str(interaction.guild_id)
-    if guild_id in SONG_QUEUES:
-        SONG_QUEUES[guild_id].clear()
+    vc: WavelinkPlayer = interaction.guild.voice_client
+    if vc:
+        vc.queue.clear()
     await interaction.response.send_message("The music queue has been cleared.", ephemeral=True)
 
 @bot.slash_command(name="shuffle", description="Shuffle the current music queue.")
@@ -401,15 +324,41 @@ async def shuffle(interaction: Interaction):
     returns:
         None
     """
-    import random
-    guild_id = str(interaction.guild_id)
-    if guild_id in SONG_QUEUES and SONG_QUEUES[guild_id]:
-        songs = list(SONG_QUEUES[guild_id])
-        random.shuffle(songs)
-        SONG_QUEUES[guild_id] = deque(songs)
+    vc: WavelinkPlayer = interaction.guild.voice_client
+    if vc and not vc.queue.is_empty:
+        vc.queue.shuffle()
         await interaction.response.send_message("The music queue has been shuffled.", ephemeral=True)
     else:
         await interaction.response.send_message("The queue is currently empty, nothing to shuffle.", ephemeral=True)
+
+@bot.slash_command(name="nowplaying", description="Show details of the currently playing song.")
+async def nowplaying(interaction: Interaction):
+    """Shows a detailed embed of the current track including a progress bar."""
+    vc: WavelinkPlayer = interaction.guild.voice_client
+    
+    if not vc or not vc.playing:
+        return await interaction.response.send_message("Nothing is currently playing.", ephemeral=True)
+
+    track = vc.current
+    embed = nextcord.Embed(
+        title="💿 Currently Playing",
+        description=f"[{track.title}]({track.uri})",
+        color=nextcord.Color.blue()
+    )
+
+    embed.add_field(name="Artist", value=track.author, inline=True)
+    embed.add_field(name="Duration", value=format_time(track.length), inline=True)
+
+    artwork = get_track_artwork(track)
+    
+    if artwork:
+        embed.set_thumbnail(url=artwork)
+
+    requester = getattr(track.extras, 'requester', 'Unknown')
+    avatar = getattr(track.extras, 'avatar', None)
+    embed.set_footer(text=f"Requested by {requester}", icon_url=avatar)
+
+    await interaction.response.send_message(embed=embed, ephemeral=True)
 
 @bot.slash_command(name="ping", description="Check the bot's latency.")
 async def ping(interaction: Interaction):
@@ -438,6 +387,8 @@ async def help_command(interaction: Interaction):
         "/skip - Skip the currently playing song.\n"
         "/pause - Pause the currently playing song.\n"
         "/resume - Resume the currently paused song.\n"
+        "/shuffle - Shuffle the current music queue.\n"
+        "/nowplaying - Show details of the currently playing song.\n"
         "/stop - Stop playback and clear the queue.\n"
         "/queue - Show the current music queue.\n"
         "/clearqueue - Clear the current music queue.\n"

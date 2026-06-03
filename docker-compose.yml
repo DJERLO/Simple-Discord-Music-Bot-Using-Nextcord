@@ -1,0 +1,11 @@
+services:
+  lavalink:
+    image: ghcr.io/lavalink-devs/lavalink:4.2.2 # Uses the stable v4 production release
+    container_name: lavalink_node
+    restart: unless-stopped
+    ports:
+      - "2333:2333" # Opens the port so your Python bot can talk to it
+    volumes:
+      - ./application.yml:/opt/Lavalink/application.yml # Passes your config into the container
+    environment:
+      - _JAVA_OPTIONS=-Xmx512M # Allocates max 512MB RAM (perfect for a lightweight lofi bot)
