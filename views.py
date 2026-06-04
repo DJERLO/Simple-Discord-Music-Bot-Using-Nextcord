@@ -1,13 +1,16 @@
 import nextcord
-from nextcord import Interaction, Embed, ButtonStyle
-from nextcord.ui import View, Button
+from nextcord import ButtonStyle, Embed, Interaction
+from nextcord.ui import Button, View
+
 
 class QueueView(View):
-    """ 
+    """
     A view for displaying and navigating through a music queue.
-    This view allows users to see the current music queue and navigate through it using buttons.
-    It supports pagination, allowing users to view a limited number of songs per page.
-    
+    This view allows users to see the current music queue and
+    navigate through it using buttons.
+    It supports pagination, allowing users to view
+    a limited number of songs per page.
+
     Attributes:
         songs (list): The list of songs in the queue.
         per_page (int): The number of songs to display per page.
@@ -15,6 +18,7 @@ class QueueView(View):
         guild_id (str): The ID of the guild this queue belongs to.
         interaction_user (nextcord.User): The user who initiated the interaction.
     """
+
     def __init__(self, songs, interaction_user, guild_id, per_page=10):
         super().__init__(timeout=60)
         self.songs = songs
@@ -22,8 +26,8 @@ class QueueView(View):
         self.page = 0
         self.guild_id = guild_id
         self.interaction_user = interaction_user
-        # Store a reference to the view's message container so timeout updates can edit it
-        self.message = None 
+        # Store a reference to the view's message container for later editing
+        self.message = None
         self.update_button_states()
 
     def get_embed(self):
@@ -35,17 +39,19 @@ class QueueView(View):
         embed = Embed(
             title=f"🎶 Music Queue (Page {self.page + 1}/{max_pages})",
             description="",
-            color=nextcord.Color.green()
+            color=nextcord.Color.green(),
         )
-        
+
         if not queue_slice:
             embed.description = "*No items on this page.*"
             return embed
 
         for idx, (_, title, _, duration) in enumerate(queue_slice, start=start + 1):
-            time_str = f" ({int(duration // 60)}:{int(duration % 60):02d})" if duration else ""
+            time_str = (
+                f" ({int(duration // 60)}:{int(duration % 60):02d})" if duration else ""
+            )
             embed.description += f"**{idx}.** {title}{time_str}\n"
-            
+
         embed.set_footer(text=f"Total Songs: {len(self.songs)}")
         return embed
 
@@ -56,7 +62,10 @@ class QueueView(View):
 
     async def interaction_check(self, interaction: Interaction) -> bool:
         if interaction.user.id != self.interaction_user.id:
-            await interaction.response.send_message("Only the user who requested the queue menu can look through pages.", ephemeral=True)
+            await interaction.response.send_message(
+                "Only the user who requested the queue menu can look through pages.",
+                ephemeral=True,
+            )
             return False
         return True
 
