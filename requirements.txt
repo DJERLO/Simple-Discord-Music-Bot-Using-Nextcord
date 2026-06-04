@@ -5,3 +5,4 @@ wavelink
 pytest
 pytest-asyncio
 pytest-watch
+ruff
