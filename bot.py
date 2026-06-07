@@ -1,3 +1,4 @@
+import asyncio
 import os
 import time
 
@@ -43,6 +44,77 @@ def get_track_artwork(track: wavelink.Playable) -> str:
 
 # Track the active music player message per guild
 ACTIVE_PLAYERS = {}
+AUTO_DISCONNECT_TASKS = {}
+
+
+@bot.event
+async def on_voice_state_update(member, before, after):
+    # Ignore bot's own voice state changes to prevent logic collisions during moves
+    if member.bot:
+        return
+
+    # Get the voice client for the server
+    vc = member.guild.voice_client
+    if not vc:
+        return
+
+    old_channel = before.channel
+    new_channel = after.channel
+    guild_id = str(member.guild.id)
+
+    # Scenario A: The bot was left alone in an empty channel
+    if old_channel and vc.channel == old_channel:
+        # Count human users remaining in the channel
+        human_count = sum(1 for m in old_channel.members if not m.bot)
+
+        if human_count == 0:
+            # If a countdown task is already running for this guild, do nothing
+            if guild_id in AUTO_DISCONNECT_TASKS:
+                return
+
+            # Define the background cleanup task
+            async def disconnect_timeout():
+                try:
+                    await asyncio.sleep(300.0)  # 5-minute timeout
+                    players = sum(1 for m in old_channel.members if not m.bot)
+                    if member.guild.voice_client and players == 0:
+                        # Clear state data before leaving
+                        if hasattr(vc, "queue"):
+                            vc.queue.clear()
+
+                        await bot.change_presence(activity=None)
+
+                        player_msg = ACTIVE_PLAYERS.get(guild_id)
+                        if player_msg:
+                            try:
+                                await player_msg.channel.send(
+                                    f"I've left **{old_channel.name}** because"
+                                    "it's been empty for too long.",
+                                    delete_after=500.0,
+                                )
+                                await player_msg.delete()
+                            except Exception:
+                                pass
+                            ACTIVE_PLAYERS[guild_id] = None
+
+                        await vc.disconnect()
+                except asyncio.CancelledError:
+                    pass  # Task was aborted safely by a user rejoining
+                finally:
+                    AUTO_DISCONNECT_TASKS.pop(guild_id, None)
+
+            # Spin up the background task
+            task = asyncio.create_task(disconnect_timeout())
+            AUTO_DISCONNECT_TASKS[guild_id] = task
+
+    # Scenario B: A human user joined a channel where the bot is currently idling
+    if new_channel and vc.channel == new_channel:
+        human_count = sum(1 for m in new_channel.members if not m.bot)
+        if human_count > 0:
+            # Cancel the active countdown task if a human rejoins
+            task = AUTO_DISCONNECT_TASKS.pop(guild_id, None)
+            if task:
+                task.cancel()
 
 
 @bot.event
@@ -195,7 +267,37 @@ async def play(interaction: Interaction, song: str):
     if not vc:
         vc = await voice_channel.connect(cls=WavelinkPlayer)
     elif voice_channel != vc.channel:
-        await vc.move_to(voice_channel)
+        guild_id = str(interaction.guild_id)
+
+        # 1. Clean up the old player interface before moving to a new channel
+        old_msg = ACTIVE_PLAYERS.get(guild_id)
+        if old_msg:
+            try:
+                await old_msg.delete()
+            except Exception:
+                pass
+            ACTIVE_PLAYERS[guild_id] = None
+
+        # Cancel pending disconnect tasks and reset state if the bot was idling
+        task = AUTO_DISCONNECT_TASKS.pop(guild_id, None)
+        if task:
+            task.cancel()
+            vc.queue.clear()  # Clear the queue when moving to a new channel
+            if vc.playing or vc.paused:
+                vc.ignore_next_cleanup = True
+                await vc.stop()  # Stop current playback when moving to a new channel
+
+        try:
+            # Attempt to move the player to the user's new channel
+            await vc.move_to(voice_channel)
+        except Exception:
+            # If moving fails (e.g. ChannelTimeoutException)
+            # fallback to a fresh connection
+            try:
+                await vc.disconnect()
+            except Exception:
+                pass
+            vc = await voice_channel.connect(cls=WavelinkPlayer)
 
     # Search for the track(s) using Wavelink's optimized search
     tracks = await wavelink.Playable.search(song)
@@ -302,6 +404,15 @@ async def on_wavelink_track_end(payload: wavelink.TrackEndEventPayload):
         return
 
     guild_id = str(player.guild.id)
+
+    # 1. Handle intentional migration: if our custom flag is set, skip the cleanup
+    if getattr(player, "ignore_next_cleanup", False):
+        player.ignore_next_cleanup = False
+        return
+
+    # 2. Handle track replacement: if the song was replaced by /play, do nothing
+    if payload.reason == "replaced":
+        return
 
     if not player.queue.is_empty:
         next_track = player.queue.get()

@@ -258,13 +258,14 @@ async def test_ping_command():
 
 
 @pytest.mark.asyncio
-async def test_regression_empty_channel_continues_playing_leak():
+async def test_empty_channel_triggers_disconnect_task():
     """
-    REGRESSION TEST: Proves that the bot currently leaks bandwidth by
-    continuing to play music when a voice channel becomes empty.
+    Ensures that when a voice channel becomes empty of human listeners,
+    the bot schedules an auto-disconnect garbage collection task.
     """
     # Setup mock event environment
     member = MagicMock(spec=nextcord.Member)
+    member.bot = False
     member.guild.id = 111222333
     guild_id_str = str(member.guild.id)
 
@@ -281,21 +282,24 @@ async def test_regression_empty_channel_continues_playing_leak():
     mock_player.paused = False
     member.guild.voice_client = mock_player
 
-    # SAFE CHECK: If the listener is missing, the bug is officially documented
-    if not hasattr(bot.bot, "on_voice_state_update"):
-        pytest.fail(
-            "REGRESSION CONFIRMED: bot.bot has no 'on_voice_state_update'"
-            "attribute. The bot will leak bandwidth in empty channels!"
-        )
+    mock_before = MagicMock()
+    mock_before.channel = mock_channel
+    mock_after = MagicMock()
+    mock_after.channel = None
+
+    # Verify the event listener exists before firing
+    assert hasattr(bot.bot, "on_voice_state_update"), (
+        "The bot is missing the on_voice_state_update event"
+    )
 
     # Fire the event listener (this will run once you patch bot.py)
-    await bot.bot.on_voice_state_update(member, MagicMock(), MagicMock())
+    await bot.bot.on_voice_state_update(member, mock_before, mock_after)
 
-    # After patching, this assertion ensures the garbage collection task is generated
-    assert (
-        hasattr(bot, "AUTO_DISCONNECT_TASKS")
-        and guild_id_str in bot.AUTO_DISCONNECT_TASKS
+    assert hasattr(bot, "AUTO_DISCONNECT_TASKS"), (
+        "The bot is missing the AUTO_DISCONNECT_TASKS attribute"
+        "for tracking garbage collection tasks"
     )
+    assert guild_id_str in bot.AUTO_DISCONNECT_TASKS
 
 
 @pytest.mark.asyncio
@@ -304,6 +308,7 @@ async def test_patch_v101_user_rejoin_cancels_countdown():
     Assures returning human listeners abort active disconnect tasks.
     """
     member = MagicMock(spec=nextcord.Member)
+    member.bot = False
     member.guild.id = 777888999
     guild_id_str = str(member.guild.id)
 
@@ -323,7 +328,16 @@ async def test_patch_v101_user_rejoin_cancels_countdown():
     running_task = asyncio.create_task(dummy_timer())
     bot.AUTO_DISCONNECT_TASKS[guild_id_str] = running_task
 
-    await bot.bot.on_voice_state_update(member, MagicMock(), MagicMock())
+    # Setup states to simulate a human rejoining the active channel
+    mock_before = MagicMock()
+    mock_before.channel = None
+    mock_after = MagicMock()
+    mock_after.channel = mock_channel
+
+    await bot.bot.on_voice_state_update(member, mock_before, mock_after)
+
+    # Yield control to allow cancellation to propagate
+    await asyncio.sleep(0)
 
     # Verify task was explicitly aborted
     assert running_task.cancelled() is True
@@ -364,7 +378,9 @@ async def test_patch_v101_migration_helper_executes_clean_slate(mock_active_play
     if len([m for m in mock_player.channel.members if not m.bot]) == 0:
         # A. Terminate task
         if guild_id_str in bot.AUTO_DISCONNECT_TASKS:
-            bot.AUTO_DISCONNECT_TASKS[guild_id_str].cancel()
+            task = bot.AUTO_DISCONNECT_TASKS.pop(guild_id_str)
+            if task:
+                task.cancel()
 
         # B. Eject state
         mock_player.queue.clear()
@@ -376,6 +392,9 @@ async def test_patch_v101_migration_helper_executes_clean_slate(mock_active_play
 
         # D. Reposition lane
         await mock_player.move_to(new_room)
+
+    # Yield control to allow cancellation to propagate
+    await asyncio.sleep(0)
 
     # ASSERTIONS: Verify the leak state is eliminated entirely
     assert running_task.cancelled() is True
