@@ -1,6 +1,8 @@
 import asyncio
+import logging
 import os
 import time
+from logging.handlers import RotatingFileHandler
 
 import nextcord
 import wavelink
@@ -13,6 +15,24 @@ from views import QueueView as QueueSongList
 # Load variables from the .env file
 load_dotenv()
 bot_token = os.getenv("BOT_TOKEN")
+
+# Create a rotating file handler for logging
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger("MusicBot")
+
+formatter = logging.Formatter(
+    "%(asctime)s [%(levelname)s] %(message)s", datefmt="%Y-%m-%d %H:%M:%S"
+)
+
+console_handler = logging.StreamHandler()
+console_handler.setFormatter(formatter)
+logger.addHandler(console_handler)
+
+file_handler = RotatingFileHandler(
+    "music_bot.log", maxBytes=5 * 1024 * 1024, backupCount=3, encoding="utf-8"
+)
+file_handler.setFormatter(formatter)
+logger.addHandler(file_handler)
 
 # Set up the bot with the necessary intents
 intents = nextcord.Intents.default()
@@ -47,7 +67,8 @@ ACTIVE_PLAYERS = {}
 AUTO_DISCONNECT_TASKS = {}
 
 VOICE_DISCONNECT_TIMEOUT = 300.0  # 5 minutes in seconds
-MESSAGE_DELETE_TIMEOUT = 60.0     # 1 minute in seconds
+MESSAGE_DELETE_TIMEOUT = 60.0  # 1 minute in seconds
+
 
 @bot.event
 async def on_voice_state_update(member, before, after):
@@ -74,6 +95,11 @@ async def on_voice_state_update(member, before, after):
             if guild_id in AUTO_DISCONNECT_TASKS:
                 return
 
+            logger.info(
+                f"Empty channel detected in guild {guild_id}. "
+                f"Starting {VOICE_DISCONNECT_TIMEOUT}s disconnect timer."
+            )
+
             # Define the background cleanup task
             async def disconnect_timeout():
                 try:
@@ -85,6 +111,7 @@ async def on_voice_state_update(member, before, after):
                         and current_vc.channel
                         and sum(1 for m in current_vc.channel.members if not m.bot) == 0
                     ):
+                        logger.info(f"Inactivity timer expired for guild {guild_id}.")
                         # Clear state data before leaving
                         if hasattr(current_vc, "queue"):
                             current_vc.queue.clear()
@@ -95,6 +122,10 @@ async def on_voice_state_update(member, before, after):
                         if player_msg:
                             try:
                                 channel_name = current_vc.channel.name
+                                logger.info(
+                                    f"Bot leaving {channel_name}"
+                                    f"({guild_id}) due to inactivity."
+                                )
                                 await player_msg.channel.send(
                                     f"I've left **{channel_name}** because "
                                     "it's been empty for too long.",
@@ -107,7 +138,7 @@ async def on_voice_state_update(member, before, after):
 
                         await current_vc.disconnect()
                 except asyncio.CancelledError:
-                    pass  # Task was aborted safely by a user rejoining
+                    logger.info(f"Disconnect timer for guild {guild_id} was cancelled.")
                 finally:
                     AUTO_DISCONNECT_TASKS.pop(guild_id, None)
 
@@ -122,6 +153,9 @@ async def on_voice_state_update(member, before, after):
             # Cancel the active countdown task if a human rejoins
             task = AUTO_DISCONNECT_TASKS.pop(guild_id, None)
             if task:
+                logger.info(
+                    f"Human rejoined channel in guild {guild_id}. Stopping timer."
+                )
                 task.cancel()
                 try:
                     await task  # Await the task to ensure cancellation is processed
@@ -269,8 +303,9 @@ async def play(interaction: Interaction, song: str):
 
     if not interaction.user.voice or not interaction.user.voice.channel:
         await interaction.followup.send(
-            "You must be in a voice channel.", ephemeral=True, 
-            delete_after=MESSAGE_DELETE_TIMEOUT
+            "You must be in a voice channel.",
+            ephemeral=True,
+            delete_after=MESSAGE_DELETE_TIMEOUT,
         )
         return
 
@@ -294,6 +329,9 @@ async def play(interaction: Interaction, song: str):
         # Cancel pending disconnect tasks and reset state if the bot was idling
         task = AUTO_DISCONNECT_TASKS.pop(guild_id, None)
         if task:
+            logger.info(
+                f"New play request in guild {guild_id}. Aborting disconnect timer."
+            )
             task.cancel()
             try:
                 # Wait for the task to acknowledge cancellation
@@ -322,9 +360,7 @@ async def play(interaction: Interaction, song: str):
 
     if not tracks:
         await interaction.followup.send(
-            "No results found.", 
-            ephemeral=True, 
-            delete_after=MESSAGE_DELETE_TIMEOUT
+            "No results found.", ephemeral=True, delete_after=MESSAGE_DELETE_TIMEOUT
         )
         return
 
@@ -361,9 +397,7 @@ async def play(interaction: Interaction, song: str):
     )
 
     await interaction.followup.send(
-        embed=embed,
-        ephemeral=True,
-        delete_after=MESSAGE_DELETE_TIMEOUT
+        embed=embed, ephemeral=True, delete_after=MESSAGE_DELETE_TIMEOUT
     )
 
     if not vc.playing:
@@ -451,6 +485,7 @@ async def on_wavelink_track_end(payload: wavelink.TrackEndEventPayload):
                 pass
             ACTIVE_PLAYERS[guild_id] = None
 
+        logger.info(f"Queue empty in guild {guild_id}. Disconnecting.")
         await player.disconnect()
         await bot.change_presence(activity=None)
 
