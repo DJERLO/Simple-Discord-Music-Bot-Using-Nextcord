@@ -46,6 +46,8 @@ def get_track_artwork(track: wavelink.Playable) -> str:
 ACTIVE_PLAYERS = {}
 AUTO_DISCONNECT_TASKS = {}
 
+VOICE_DISCONNECT_TIMEOUT = 300.0  # 5 minutes in seconds
+MESSAGE_DELETE_TIMEOUT = 60.0     # 1 minute in seconds
 
 @bot.event
 async def on_voice_state_update(member, before, after):
@@ -75,7 +77,7 @@ async def on_voice_state_update(member, before, after):
             # Define the background cleanup task
             async def disconnect_timeout():
                 try:
-                    await asyncio.sleep(300.0)  # 5-minute timeout
+                    await asyncio.sleep(VOICE_DISCONNECT_TIMEOUT)
                     # Re-verify the current state of the voice client
                     current_vc = member.guild.voice_client
                     if (
@@ -96,7 +98,7 @@ async def on_voice_state_update(member, before, after):
                                 await player_msg.channel.send(
                                     f"I've left **{channel_name}** because "
                                     "it's been empty for too long.",
-                                    delete_after=60.0,
+                                    delete_after=MESSAGE_DELETE_TIMEOUT,
                                 )
                                 await player_msg.delete()
                             except Exception:
@@ -267,7 +269,8 @@ async def play(interaction: Interaction, song: str):
 
     if not interaction.user.voice or not interaction.user.voice.channel:
         await interaction.followup.send(
-            "You must be in a voice channel.", ephemeral=True, delete_after=5.0
+            "You must be in a voice channel.", ephemeral=True, 
+            delete_after=MESSAGE_DELETE_TIMEOUT
         )
         return
 
@@ -319,7 +322,9 @@ async def play(interaction: Interaction, song: str):
 
     if not tracks:
         await interaction.followup.send(
-            "No results found.", ephemeral=True, delete_after=5.0
+            "No results found.", 
+            ephemeral=True, 
+            delete_after=MESSAGE_DELETE_TIMEOUT
         )
         return
 
@@ -355,7 +360,11 @@ async def play(interaction: Interaction, song: str):
         text=f"Requested by {interaction.user.display_name}", icon_url=extras["avatar"]
     )
 
-    await interaction.followup.send(embed=embed, ephemeral=True, delete_after=10.0)
+    await interaction.followup.send(
+        embed=embed,
+        ephemeral=True,
+        delete_after=MESSAGE_DELETE_TIMEOUT
+    )
 
     if not vc.playing:
         await vc.play(vc.queue.get())
