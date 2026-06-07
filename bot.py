@@ -76,28 +76,34 @@ async def on_voice_state_update(member, before, after):
             async def disconnect_timeout():
                 try:
                     await asyncio.sleep(300.0)  # 5-minute timeout
-                    players = sum(1 for m in old_channel.members if not m.bot)
-                    if member.guild.voice_client and players == 0:
+                    # Re-verify the current state of the voice client
+                    current_vc = member.guild.voice_client
+                    if (
+                        current_vc
+                        and current_vc.channel
+                        and sum(1 for m in current_vc.channel.members if not m.bot) == 0
+                    ):
                         # Clear state data before leaving
-                        if hasattr(vc, "queue"):
-                            vc.queue.clear()
+                        if hasattr(current_vc, "queue"):
+                            current_vc.queue.clear()
 
                         await bot.change_presence(activity=None)
 
                         player_msg = ACTIVE_PLAYERS.get(guild_id)
                         if player_msg:
                             try:
+                                channel_name = current_vc.channel.name
                                 await player_msg.channel.send(
-                                    f"I've left **{old_channel.name}** because"
+                                    f"I've left **{channel_name}** because "
                                     "it's been empty for too long.",
-                                    delete_after=500.0,
+                                    delete_after=60.0,
                                 )
                                 await player_msg.delete()
                             except Exception:
                                 pass
                             ACTIVE_PLAYERS[guild_id] = None
 
-                        await vc.disconnect()
+                        await current_vc.disconnect()
                 except asyncio.CancelledError:
                     pass  # Task was aborted safely by a user rejoining
                 finally:
@@ -115,6 +121,10 @@ async def on_voice_state_update(member, before, after):
             task = AUTO_DISCONNECT_TASKS.pop(guild_id, None)
             if task:
                 task.cancel()
+                try:
+                    await task  # Await the task to ensure cancellation is processed
+                except asyncio.CancelledError:
+                    pass
 
 
 @bot.event
@@ -282,6 +292,11 @@ async def play(interaction: Interaction, song: str):
         task = AUTO_DISCONNECT_TASKS.pop(guild_id, None)
         if task:
             task.cancel()
+            try:
+                # Wait for the task to acknowledge cancellation
+                await task
+            except asyncio.CancelledError:
+                pass
             vc.queue.clear()  # Clear the queue when moving to a new channel
             if vc.playing or vc.paused:
                 vc.ignore_next_cleanup = True
