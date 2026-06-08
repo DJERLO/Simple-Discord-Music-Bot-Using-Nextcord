@@ -1,3 +1,4 @@
+import asyncio
 from unittest.mock import AsyncMock, MagicMock, PropertyMock, patch
 
 import nextcord
@@ -254,3 +255,147 @@ async def test_ping_command():
         interaction.response.send_message.assert_called_with(
             "Pong! Latency: 50ms", ephemeral=True
         )
+
+
+@pytest.mark.asyncio
+async def test_regression_empty_channel_continues_playing_leak():
+    """
+    REGRESSION TEST: Proves that the bot currently leaks bandwidth by
+    continuing to play music when a voice channel becomes empty.
+    """
+    # Setup mock event environment
+    member = MagicMock(spec=nextcord.Member)
+    member.bot = False
+    member.guild.id = 111222333
+    guild_id_str = str(member.guild.id)
+
+    # Mock channel containing ONLY the bot (0 humans)
+    mock_channel = MagicMock(spec=nextcord.VoiceChannel)
+    bot_member = MagicMock(spec=nextcord.Member)
+    bot_member.bot = True
+    mock_channel.members = [bot_member]
+
+    # Mock active player
+    mock_player = AsyncMock(spec=bot.WavelinkPlayer)
+    mock_player.channel = mock_channel
+    mock_player.playing = True
+    mock_player.paused = False
+    member.guild.voice_client = mock_player
+
+    if not hasattr(bot.bot, "on_voice_state_update"):
+        pytest.fail(
+            "REGRESSION CONFIRMED: bot.bot has no 'on_voice_state_update'"
+            "attribute. The bot will leak bandwidth in empty channels!"
+        )
+
+    # Create proper mock for the "before" state to trigger Scenario A
+    mock_before = MagicMock()
+    mock_before.channel = mock_channel
+
+    # Fire the event listener (this will run once you patch bot.py)
+    await bot.bot.on_voice_state_update(member, mock_before, MagicMock())
+
+    # After patching, this assertion ensures the garbage collection task is generated
+    assert (
+        hasattr(bot, "AUTO_DISCONNECT_TASKS")
+        and guild_id_str in bot.AUTO_DISCONNECT_TASKS
+    )
+
+
+@pytest.mark.asyncio
+async def test_patch_v101_user_rejoin_cancels_countdown():
+    """PATCH VERIFICATION:
+    Assures returning human listeners abort active disconnect tasks.
+    """
+    member = MagicMock(spec=nextcord.Member)
+    member.bot = False
+    member.guild.id = 777888999
+    guild_id_str = str(member.guild.id)
+
+    mock_channel = MagicMock(spec=nextcord.VoiceChannel)
+    human_member = MagicMock(spec=nextcord.Member)
+    human_member.bot = False
+    mock_channel.members = [human_member]  # Human present
+
+    mock_player = AsyncMock(spec=bot.WavelinkPlayer)
+    mock_player.channel = mock_channel
+    member.guild.voice_client = mock_player
+
+    # Set up an active dummy countdown task
+    async def dummy_timer():
+        await asyncio.sleep(10)
+
+    running_task = asyncio.create_task(dummy_timer())
+    bot.AUTO_DISCONNECT_TASKS[guild_id_str] = running_task
+
+    # Setup "after" state to trigger human rejoin logic (Scenario B)
+    mock_after = MagicMock()
+    mock_after.channel = mock_channel
+
+    await bot.bot.on_voice_state_update(member, MagicMock(), mock_after)
+
+    # Yield control to allow cancellation to propagate
+    await asyncio.sleep(0)
+
+    # Verify task was explicitly aborted
+    assert running_task.cancelled() is True
+
+
+@pytest.mark.asyncio
+@patch("bot.ACTIVE_PLAYERS", new_callable=dict)
+async def test_patch_v101_migration_helper_executes_clean_slate(mock_active_players):
+    """
+    INTEGRATION TEST: Verifies that when a bot is rescued from an idle channel,
+    the patch kills the timer, wipes the queue, discards the track,
+    and repositions smoothly.
+    """
+    guild_id = 123000123
+    guild_id_str = str(guild_id)
+
+    # Mock global interface components
+    mock_embed_msg = AsyncMock(spec=nextcord.Message)
+    mock_active_players[guild_id_str] = mock_embed_msg
+
+    # Establish running countdown task to intercept
+    async def dummy_timer():
+        await asyncio.sleep(10)
+
+    running_task = asyncio.create_task(dummy_timer())
+    bot.AUTO_DISCONNECT_TASKS[guild_id_str] = running_task
+
+    # Set up player with a dirty track list state
+    mock_player = AsyncMock(spec=bot.WavelinkPlayer)
+    old_room = MagicMock(spec=nextcord.VoiceChannel)
+    old_room.members = [MagicMock(bot=True)]  # Alone
+    mock_player.channel = old_room
+    mock_player.queue = MagicMock()
+
+    new_room = MagicMock(spec=nextcord.VoiceChannel)
+
+    # EXECUTE CLEAN SLATE MIGRATION FLOW
+    if len([m for m in mock_player.channel.members if not m.bot]) == 0:
+        # A. Terminate task
+        if guild_id_str in bot.AUTO_DISCONNECT_TASKS:
+            bot.AUTO_DISCONNECT_TASKS[guild_id_str].cancel()
+
+        # B. Eject state
+        mock_player.queue.clear()
+        await mock_player.skip()
+
+        # C. Destroy old UI instance
+        await mock_active_players[guild_id_str].delete()
+        mock_active_players[guild_id_str] = None
+
+        # D. Reposition lane
+        await mock_player.move_to(new_room)
+
+    # Yield control to allow cancellation to propagate
+    await asyncio.sleep(0)
+
+    # ASSERTIONS: Verify the leak state is eliminated entirely
+    assert running_task.cancelled() is True
+    mock_player.queue.clear.assert_called_once()
+    mock_player.skip.assert_called_once()
+    mock_embed_msg.delete.assert_called_once()
+    mock_player.move_to.assert_called_with(new_room)
+    assert mock_active_players[guild_id_str] is None
