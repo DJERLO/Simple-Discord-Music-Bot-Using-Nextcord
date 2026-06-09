@@ -62,7 +62,9 @@ def get_track_artwork(track: wavelink.Playable) -> str:
     return artwork
 
 
-def create_now_playing_embed(player: WavelinkPlayer, track: wavelink.Playable, is_persistent: bool = True) -> nextcord.Embed:
+def create_now_playing_embed(
+    player: WavelinkPlayer, track: wavelink.Playable, is_persistent: bool = True
+) -> nextcord.Embed:
     """Centralized helper to create the Now Playing embed for events and commands."""
     embed = nextcord.Embed(
         title="💿 Now Playing" if is_persistent else "💿 Currently Playing",
@@ -71,7 +73,7 @@ def create_now_playing_embed(player: WavelinkPlayer, track: wavelink.Playable, i
     )
 
     embed.add_field(name="Artist", value=track.author, inline=True)
-    
+
     album_name = getattr(track, "album", None)
     if album_name and hasattr(album_name, "name") and album_name.name:
         embed.add_field(name="Album", value=album_name.name, inline=True)
@@ -84,7 +86,7 @@ def create_now_playing_embed(player: WavelinkPlayer, track: wavelink.Playable, i
     ap_label = {
         wavelink.AutoPlayMode.enabled: "✅ Full",
         wavelink.AutoPlayMode.partial: "✨ Partial",
-        wavelink.AutoPlayMode.disabled: "❌ Disabled"
+        wavelink.AutoPlayMode.disabled: "❌ Disabled",
     }.get(autoplay_mode, "Unknown")
 
     embed.add_field(name="Volume", value=f"{player.volume}%", inline=True)
@@ -106,13 +108,21 @@ def create_now_playing_embed(player: WavelinkPlayer, track: wavelink.Playable, i
     footer_text = f"Requested by {requester}"
     if is_persistent:
         footer_text += " | In Voice Channel"
-    
+
     embed.set_footer(text=footer_text, icon_url=avatar)
     return embed
 
 
 async def update_player_message(player: WavelinkPlayer):
-    """Updates the existing persistent player message in the channel with current state."""
+    """
+    Updates the existing persistent player message
+    in the channel with current state.
+
+    Args:
+        player (WavelinkPlayer): The music player instance to update the message for.
+    returns:
+      None
+    """
     guild_id = str(player.guild.id)
     msg = ACTIVE_PLAYERS.get(guild_id)
     if msg and player.current:
@@ -252,7 +262,9 @@ async def skip(interaction: Interaction):
             "Skipped the current song.", ephemeral=True
         )
     else:
-        await interaction.response.send_message("Not playing anything to skip.", ephemeral=True)
+        await interaction.response.send_message(
+            "Not playing anything to skip.", ephemeral=True
+        )
 
 
 # Slash Command to pause the currently playing song
@@ -375,7 +387,9 @@ async def play(interaction: Interaction, song: str):
 
     if not vc:
         vc = await voice_channel.connect(cls=WavelinkPlayer)
-        vc.autoplay = GUILD_AUTOPLAY_MODES.get(str(interaction.guild_id), wavelink.AutoPlayMode.disabled)
+        vc.autoplay = GUILD_AUTOPLAY_MODES.get(
+            str(interaction.guild_id), wavelink.AutoPlayMode.disabled
+        )
     elif voice_channel != vc.channel:
         guild_id = str(interaction.guild_id)
 
@@ -526,7 +540,7 @@ async def on_wavelink_track_end(payload: wavelink.TrackEndEventPayload):
     if getattr(player, "loop", False):
         await player.play(payload.track)
         return
-    
+
     # 4. Determine the next track to play (checking user queue, then partial auto_queue)
     next_track = None
     kwargs = {}
@@ -543,15 +557,15 @@ async def on_wavelink_track_end(payload: wavelink.TrackEndEventPayload):
             kwargs["populate"] = True
             kwargs["max_populate"] = 5
         else:
-            # BUG FIX: auto_queue is empty because it was skipped early or hadn't filled yet!
-            # Force-populate recommendations using the song that just ended (payload.track)
-            logger.info(f"Guild {guild_id}: Auto-queue empty on track end. Force populating recommendations.")
+            logger.info(
+                f"Guild {guild_id}: Auto-queue empty on track end. "
+                f"Force populating recommendations."
+            )
             kwargs["populate"] = True
             kwargs["max_populate"] = 5
-            # Passing payload.track tells Lavalink what to base the new recommendations on
             await player.play(payload.track, **kwargs)
             return
-    
+
     # 5. Execute playback or handle clean disconnects
     if next_track:
         await player.play(next_track, **kwargs)
@@ -559,7 +573,7 @@ async def on_wavelink_track_end(payload: wavelink.TrackEndEventPayload):
         # 6. Handle Autoplay transition
         if player.autoplay == wavelink.AutoPlayMode.enabled:
             return
-            
+
         # Only clean up the interface if the queue is empty AND autoplay is disabled
         msg = ACTIVE_PLAYERS.get(guild_id)
         if msg:
@@ -587,18 +601,27 @@ async def queue(interaction: Interaction):
     """
     vc: WavelinkPlayer = interaction.guild.voice_client
     if not vc:
-        return await interaction.response.send_message("I'm not in a voice channel.", ephemeral=True)
+        return await interaction.response.send_message(
+            "I'm not in a voice channel.", ephemeral=True
+        )
 
     # Convert Wavelink queue to the format expected by our QueueView
     songs_list = []
     for track in vc.queue:
-        songs_list.append((track.uri, track.title, get_track_artwork(track), track.length / 1000))
+        songs_list.append(
+            (track.uri, track.title, get_track_artwork(track), track.length / 1000)
+        )
 
     # Show recommended tracks from AutoQueue if mode is partial
     if vc.autoplay == wavelink.AutoPlayMode.partial and not vc.auto_queue.is_empty:
         for track in list(vc.auto_queue)[:5]:
             songs_list.append(
-                (track.uri, f"✨ {track.title} (Auto-Queue)", get_track_artwork(track), track.length / 1000)
+                (
+                    track.uri,
+                    f"✨ {track.title} (Auto-Queue)",
+                    get_track_artwork(track),
+                    track.length / 1000,
+                )
             )
 
     if not songs_list:
@@ -743,11 +766,14 @@ async def join(interaction: Interaction):
     else:
         vc = await voice_channel.connect(cls=WavelinkPlayer)
         # Apply persistent autoplay mode if set
-        vc.autoplay = GUILD_AUTOPLAY_MODES.get(str(interaction.guild_id), wavelink.AutoPlayMode.disabled)
+        vc.autoplay = GUILD_AUTOPLAY_MODES.get(
+            str(interaction.guild_id), wavelink.AutoPlayMode.disabled
+        )
 
     await interaction.response.send_message(
         f"Joined **{voice_channel.name}**!", ephemeral=True
     )
+
 
 @bot.slash_command(name="volume", description="Set the playback volume (0-100).")
 async def volume(interaction: Interaction, value: int):
@@ -775,6 +801,7 @@ async def volume(interaction: Interaction, value: int):
     await update_player_message(vc)
     await interaction.response.send_message(f"Volume set to {value}%.", ephemeral=True)
 
+
 @bot.slash_command(name="loop", description="Toggle looping of the current track.")
 async def loop(interaction: Interaction):
     """
@@ -794,9 +821,14 @@ async def loop(interaction: Interaction):
     vc.loop = not getattr(vc, "loop", False)
     status = "enabled" if vc.loop else "disabled"
     await update_player_message(vc)
-    await interaction.response.send_message(f"Looping {status} for the current track.", ephemeral=True)
+    await interaction.response.send_message(
+        f"Looping {status} for the current track.", ephemeral=True
+    )
 
-@bot.slash_command(name="autoplay", description="Set autoplay mode for continuous music.")
+
+@bot.slash_command(
+    name="autoplay", description="Set autoplay mode for continuous music."
+)
 async def autoplay(
     interaction: Interaction,
     mode: str = nextcord.SlashOption(
@@ -831,15 +863,15 @@ async def autoplay(
     }
 
     GUILD_AUTOPLAY_MODES[str(interaction.guild_id)] = mode_map[mode]
-    
+
     if vc:
         vc.autoplay = mode_map[mode]
         await update_player_message(vc)
-    
+
     await interaction.response.send_message(
         f"Autoplay mode has been set to: **{mode.capitalize()}**", ephemeral=True
     )
-    
+
 
 # Run the bot with your token
 if __name__ == "__main__":

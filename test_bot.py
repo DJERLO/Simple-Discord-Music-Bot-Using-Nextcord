@@ -400,7 +400,9 @@ async def test_patch_v101_migration_helper_executes_clean_slate(mock_active_play
     mock_player.move_to.assert_called_with(new_room)
     assert mock_active_players[guild_id_str] is None
 
+
 # --- 5. COMPREHENSIVE COMMAND & AUTOPLAY QA TEST SUITE ---
+
 
 @pytest.mark.asyncio
 async def test_join_command_user_not_in_voice():
@@ -435,7 +437,11 @@ async def test_volume_command_no_voice_client():
 @pytest.mark.asyncio
 @pytest.mark.parametrize("invalid_volume", [-10, 101, 150])
 async def test_volume_command_out_of_bounds_guards(invalid_volume):
-    """Boundary Value Test: Input boundaries outside the strictly allowed 0-100 range."""
+    """
+    Boundary Value Test:
+    Setting volume at Input boundaries
+    outside the strictly allowed 0-100 range.
+    """
     interaction = AsyncMock(spec=nextcord.Interaction)
     interaction.response.send_message = AsyncMock()
     mock_vc = AsyncMock(spec=bot.WavelinkPlayer)
@@ -452,7 +458,10 @@ async def test_volume_command_out_of_bounds_guards(invalid_volume):
 @pytest.mark.asyncio
 @pytest.mark.parametrize("valid_volume", [0, 50, 100])
 async def test_volume_command_success_boundaries(valid_volume):
-    """Boundary Value Test: Setting volume at extreme or mid-range valid boundary limits."""
+    """
+    Boundary Value Test:
+    Setting volume at extreme or mid-range valid boundary limits.
+    """
     interaction = AsyncMock(spec=nextcord.Interaction)
     interaction.response.send_message = AsyncMock()
     mock_vc = AsyncMock(spec=bot.WavelinkPlayer)
@@ -485,7 +494,11 @@ async def test_loop_command_guard_when_not_playing():
 
 @pytest.mark.asyncio
 async def test_loop_command_toggle_state_inversion():
-    """Scenario: Confirm the loop boolean state flips and scales on back-to-back calls."""
+    """
+    Scenario:
+    Confirm the loop boolean state flips
+    and scales on back-to-back calls.
+    """
     interaction = AsyncMock(spec=nextcord.Interaction)
     interaction.response.send_message = AsyncMock()
     mock_vc = AsyncMock(spec=bot.WavelinkPlayer)
@@ -536,10 +549,10 @@ async def test_autoplay_command_and_global_persistence_mapping(mode_str, expecte
     interaction = AsyncMock(spec=nextcord.Interaction)
     interaction.guild_id = 999111222
     interaction.response.send_message = AsyncMock()
-    
+
     mock_vc = AsyncMock(spec=bot.WavelinkPlayer)
     interaction.guild.voice_client = mock_vc
-    
+
     guild_key = str(interaction.guild_id)
     bot.GUILD_AUTOPLAY_MODES.pop(guild_key, None)  # Purge old cache state
 
@@ -561,26 +574,28 @@ async def test_on_wavelink_track_end_partial_empty_auto_queue_fallback():
     """
     mock_payload = MagicMock(spec=wavelink.TrackEndEventPayload)
     mock_payload.reason = "finished"
-    
+
     mock_player = AsyncMock(spec=bot.WavelinkPlayer)
     mock_player.guild.id = 555444333
     mock_player.autoplay = wavelink.AutoPlayMode.partial
-    
+
     # Both active queues evaluate as fully dry
     mock_player.queue = MagicMock(spec=wavelink.Queue)
     mock_player.queue.is_empty = True
     mock_player.auto_queue = MagicMock(spec=wavelink.Queue)
     mock_player.auto_queue.is_empty = True
-    
+
     mock_seed_track = MagicMock(spec=wavelink.Playable)
     mock_payload.track = mock_seed_track
     mock_payload.player = mock_player
 
     await bot.on_wavelink_track_end(mock_payload)
 
-    # Confirm player intercepts empty buffer and runs a recovery playback query using seed track
-    mock_player.play.assert_called_once_with(mock_seed_track, populate=True, max_populate=5)
+    mock_player.play.assert_called_once_with(
+        mock_seed_track, populate=True, max_populate=5
+    )
     mock_player.disconnect.assert_not_called()
+
 
 @pytest.mark.asyncio
 async def test_update_player_message_ignores_api_errors():
@@ -588,41 +603,47 @@ async def test_update_player_message_ignores_api_errors():
     mock_player = AsyncMock(spec=bot.WavelinkPlayer)
     mock_player.guild.id = 123
     mock_player.current = MagicMock(spec=wavelink.Playable)
-    
+
     mock_msg = AsyncMock()
     # Simulate a Discord API error (e.g. message deleted or no permissions)
     mock_msg.edit.side_effect = nextcord.HTTPException(AsyncMock(), "Failed")
-    
+
     bot.ACTIVE_PLAYERS["123"] = mock_msg
-    
+
     # This call should catch the exception and return normally
     await bot.update_player_message(mock_player)
     mock_msg.edit.assert_called_once()
 
+
 @pytest.mark.asyncio
 async def test_join_restores_persisted_autoplay_mode():
-    """INTEGRITY TEST: Verifies that joining a channel restores saved autoplay settings."""
+    """
+    INTEGRITY TEST:
+    Verifies that joining a channel restores saved autoplay settings.
+    """
     interaction = AsyncMock(spec=nextcord.Interaction)
     interaction.guild_id = 456
     interaction.response.send_message = AsyncMock()
     interaction.guild.voice_client = None
     interaction.user.voice.channel = AsyncMock(spec=nextcord.VoiceChannel)
     interaction.user.voice.channel.name = "Test Channel"
-    
+
     mock_vc = AsyncMock(spec=bot.WavelinkPlayer)
     interaction.user.voice.channel.connect.return_value = mock_vc
-    
+
     # Pre-set a mode in the persistent dictionary
     bot.GUILD_AUTOPLAY_MODES["456"] = wavelink.AutoPlayMode.partial
-    
+
     await bot.join.callback(interaction)
-    
+
     assert mock_vc.autoplay == wavelink.AutoPlayMode.partial
+
 
 @pytest.mark.asyncio
 @patch("bot.QueueSongList")
 async def test_queue_command_enforces_recommendation_limit(mock_view_class):
-    """STRESS TEST: Confirms UI slices recommendations even if internal queue is flooded."""
+    """STRESS TEST:
+    Confirms UI slices recommendations even if internal queue is flooded."""
     interaction = AsyncMock(spec=nextcord.Interaction)
     interaction.response.send_message = AsyncMock()
     interaction.original_message = AsyncMock()
@@ -634,11 +655,11 @@ async def test_queue_command_enforces_recommendation_limit(mock_view_class):
     mock_player.auto_queue.is_empty = False
     tracks = [MagicMock(spec=wavelink.Playable) for _ in range(20)]
     mock_player.auto_queue.__iter__.return_value = iter(tracks)
-    
+
     interaction.guild.voice_client = mock_player
 
     await bot.queue.callback(interaction)
-    
+
     args, _ = mock_view_class.call_args
     songs_list = args[0]
     # Should be exactly 5 recommendations displayed
