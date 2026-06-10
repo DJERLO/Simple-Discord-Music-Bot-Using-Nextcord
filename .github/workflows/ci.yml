@@ -49,4 +49,4 @@ jobs:
       run: ruff format . --check
 
     - name: Run Unit Test Suite
-      run: pytest test_bot.py -v
+      run: pytest tests/ -v
