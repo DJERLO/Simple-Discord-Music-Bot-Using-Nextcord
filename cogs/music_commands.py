@@ -129,8 +129,8 @@ class MusicCommands(commands.Cog):
         except wavelink.exceptions.LavalinkLoadException:
             logger.warning(f"Unsupported source or invalid query: {song}")
             await interaction.followup.send(
-                "**Unsupported or Invalid Source:** Currently, this bot only "
-                "supports direct YouTube, YouTubeMusic and SoundCloud searches or URLs. "
+                "**Unsupported Source:** Currently, this bot only supports "
+                "direct YouTube, YouTubeMusic and SoundCloud searches or URLs. "
                 "Please provide a valid YouTube or SoundCloud link, or a search term.",
                 ephemeral=True,
                 delete_after=MESSAGE_DELETE_TIMEOUT,
@@ -292,9 +292,7 @@ class MusicCommands(commands.Cog):
         name="join", description="Make the bot join your voice channel."
     )
     async def join(self, interaction: Interaction):
-        """
-        Handles the /join command, allowing the bot to join the user's voice channel.
-        """
+        """Handles the /join command, pulling the bot and its UI panels safely."""
         if not interaction.user.voice or not interaction.user.voice.channel:
             await interaction.response.send_message(
                 "You must be in a voice channel to use this command.",
@@ -305,18 +303,45 @@ class MusicCommands(commands.Cog):
 
         voice_channel = interaction.user.voice.channel
         vc: WavelinkPlayer = interaction.guild.voice_client
+        guild_id = str(interaction.guild_id)
 
         if vc and vc.channel == voice_channel:
             await interaction.response.send_message(
                 "I'm already in your voice channel.", ephemeral=True
             )
             return
+
         elif vc and vc.channel != voice_channel:
+            # 1. Clean up the old persistent dashboard message from the old channel
+            old_msg = ACTIVE_PLAYERS.get(guild_id)
+            if old_msg:
+                try:
+                    await old_msg.delete()
+                except Exception:
+                    pass
+                ACTIVE_PLAYERS[guild_id] = None
+
+            # 2. Shift the connection over to the new channel location cleanly
             await vc.move_to(voice_channel)
+
+            # 3. Drop a fresh now-playing UI panel right where the user just ran /join
+            if vc.playing or vc.paused:
+                current_track = vc.current
+                if current_track:
+                    # Construct a pristine visual embed card
+                    embed = create_now_playing_embed(
+                        vc, current_track, is_persistent=True, bot_user=self.bot.user
+                    )
+                    
+                    # Send it fresh into the new text channel
+                    new_msg = await interaction.channel.send(embed=embed)
+                    
+                    # Re-cache the newly generated message reference globally
+                    ACTIVE_PLAYERS[guild_id] = new_msg
         else:
             vc = await voice_channel.connect(cls=WavelinkPlayer)
             vc.autoplay = GUILD_AUTOPLAY_MODES.get(
-                str(interaction.guild_id), wavelink.AutoPlayMode.disabled
+                guild_id, wavelink.AutoPlayMode.disabled
             )
 
         await interaction.response.send_message(
