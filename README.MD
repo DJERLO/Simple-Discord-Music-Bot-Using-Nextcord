@@ -192,7 +192,7 @@ This workflow ensures that:
 
 ### 🛡️ DJ Only Commands
 * `/volume <1-100>` — Adjusts the player's audio output level. *(DJ Only)*
-* `/loop` — Toggles repeat playback for the currently active track. *(DJ Only)*
+* `/loop <normal|loop|loop_all>` — Toggles repeat playback for the currently active track or loop_all tracks in the queue. *(DJ Only)*
 * `/autoplay <mode>` — Configures smart-mix autoplay for continuous streams. *(DJ Only)*
 * `/skip` — Instantly bypasses the current song without requiring a vote. *(DJ Only)*
 * `/pause` — Freezes audio streaming on the active Lavalink node. *(DJ Only)*

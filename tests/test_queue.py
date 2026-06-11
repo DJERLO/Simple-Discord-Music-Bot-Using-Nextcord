@@ -30,10 +30,12 @@ async def test_clearqueue_command(cog):
     interaction = AsyncMock(spec=nextcord.Interaction)
     interaction.response.send_message = AsyncMock()
     interaction.guild.voice_client.queue.clear = MagicMock()
+    interaction.guild.voice_client.auto_queue.clear = MagicMock()
 
     await cog.clearqueue.callback(cog, interaction)
 
     interaction.guild.voice_client.queue.clear.assert_called_once()
+    interaction.guild.voice_client.auto_queue.clear.assert_called_once()
     interaction.response.send_message.assert_called_with(
         "The music queue has been cleared.", ephemeral=True
     )
@@ -43,14 +45,26 @@ async def test_clearqueue_command(cog):
 async def test_shuffle_command_success(cog):
     interaction = AsyncMock(spec=nextcord.Interaction)
     interaction.response.send_message = AsyncMock()
-    interaction.guild.voice_client.queue.is_empty = False
-    interaction.guild.voice_client.queue.shuffle = MagicMock()
+
+    # Mocking the VC
+    mock_vc = AsyncMock(spec=WavelinkPlayer)
+    interaction.guild.voice_client = mock_vc
+
+    # Setup the state: User queue has items, auto_queue is empty for this specific test
+    mock_vc.queue = MagicMock(spec=wavelink.Queue)
+    mock_vc.queue.is_empty = False
+    mock_vc.auto_queue = MagicMock(spec=wavelink.Queue)
+    mock_vc.auto_queue.is_empty = True
+
+    mock_vc.queue.shuffle = MagicMock()
 
     await cog.shuffle.callback(cog, interaction)
 
-    interaction.guild.voice_client.queue.shuffle.assert_called_once()
+    mock_vc.queue.shuffle.assert_called_once()
+
+    # Updated assertion for the new message
     interaction.response.send_message.assert_called_with(
-        "The music queue has been shuffled.", ephemeral=True
+        "The queue has been shuffled.", ephemeral=True
     )
 
 

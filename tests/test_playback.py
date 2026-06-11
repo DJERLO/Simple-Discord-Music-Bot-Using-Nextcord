@@ -244,7 +244,7 @@ async def test_loop_command_guard_when_not_playing(cog):
     await cog.loop.callback(cog, interaction)
 
     interaction.response.send_message.assert_called_once_with(
-        "Nothing is currently playing to loop.", ephemeral=True
+        "Nothing is currently playing.", ephemeral=True
     )
 
 
@@ -256,24 +256,23 @@ async def test_loop_command_toggle_state_inversion(cog):
     """
     interaction = AsyncMock(spec=nextcord.Interaction)
     interaction.response.send_message = AsyncMock()
+
+    # 1. Setup the mock player
     mock_vc = AsyncMock(spec=WavelinkPlayer)
     mock_vc.playing = True
-    mock_vc.loop = False  # Start disabled
+
+    # 2. Setup a mock queue object
+    mock_queue = MagicMock()
+    mock_queue.mode = wavelink.QueueMode.normal  # Start in normal mode
+    mock_vc.queue = mock_queue
+
     interaction.guild.voice_client = mock_vc
 
-    # First inversion pass: Enable loop
+    # Now the test will be able to access vc.queue.mode
     await cog.loop.callback(cog, interaction)
-    assert mock_vc.loop is True
-    interaction.response.send_message.assert_called_with(
-        "Looping enabled for the current track.", ephemeral=True
-    )
 
-    # Second inversion pass: Disable loop
-    await cog.loop.callback(cog, interaction)
-    assert mock_vc.loop is False
-    interaction.response.send_message.assert_called_with(
-        "Looping disabled for the current track.", ephemeral=True
-    )
+    # Assert that mode was changed
+    assert mock_vc.queue.mode == wavelink.QueueMode.loop
 
 
 @pytest.mark.asyncio

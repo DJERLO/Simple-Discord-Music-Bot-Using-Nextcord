@@ -43,7 +43,12 @@ async def on_ready():
     """Connect to Lavalink node when the bot is ready and sync commands."""
     logger.info(f"🚀 Main Engine Online: Authenticated as {bot.user}")
 
-    node: wavelink.Node = wavelink.Node(uri=lavalink_uri, password=lavalink_password)
+    node = wavelink.Node(
+        uri=lavalink_uri,
+        password=lavalink_password,
+        retries=10,
+        heartbeat=60,
+    )
     await wavelink.Pool.connect(nodes=[node], client=bot)
     await bot.sync_application_commands()
 

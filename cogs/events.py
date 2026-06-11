@@ -251,6 +251,33 @@ class AudioEvents(commands.Cog):
             await player.disconnect()
             await self.bot.change_presence(activity=None)
 
+    @commands.Cog.listener()
+    async def on_wavelink_track_stuck(self, payload: wavelink.TrackStuckEventPayload):
+        """
+        Handles tracks that fail to play, preventing the player
+        from hanging indefinitely in the voice channel.
+        """
+        player = payload.player
+        logger.warning(
+            f"Track {payload.track.title} stuck in guild {player.guild.id}. "
+            f"Threshold: {payload.threshold}ms"
+        )
+
+        # Action: Immediately skip the stuck track to keep the music flowing
+        try:
+            await player.skip()
+        except Exception as e:
+            logger.error(f"Failed to auto-skip stuck track: {e}")
+
+    @commands.Cog.listener()
+    async def on_wavelink_track_exception(
+        self, payload: wavelink.TrackExceptionEventPayload
+    ):
+        """Handles tracks that encounter exceptions during playback, ensuring the player
+        doesn't get stuck and provides feedback on the issue."""
+        logger.error(f"Track {payload.track.title} failed: {payload.exception.message}")
+        await payload.player.skip()
+
 
 def setup(bot: commands.Bot):
     bot.add_cog(AudioEvents(bot))

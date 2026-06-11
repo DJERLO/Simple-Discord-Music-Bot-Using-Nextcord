@@ -1,5 +1,6 @@
 import asyncio
 import logging
+import random
 
 import nextcord
 import wavelink
@@ -184,6 +185,8 @@ class MusicCommands(commands.Cog):
         if not vc.playing:
             track = vc.queue.get()
             kwargs = {}
+            if vc.autoplay == wavelink.AutoPlayMode.enabled:
+                kwargs["populate"] = True
             if vc.autoplay == wavelink.AutoPlayMode.partial:
                 kwargs["populate"] = True
                 kwargs["max_populate"] = 5
@@ -194,6 +197,12 @@ class MusicCommands(commands.Cog):
         """
         Handles the /queue command, allowing users to view the
         current music queue and autoplay list.
+
+        Logic for Autoplay modes in the queue view:
+        - Enabled: Shows the entire auto-queue populated by Lavalink recommendations.
+        - Partial: We manually restrict display to the next 5 tracks,
+                   providing a 'preview' window without flooding the UI.
+        - Disabled: No autoplay tracks are shown.
         """
         vc: WavelinkPlayer = interaction.guild.voice_client
         if not vc:
@@ -207,6 +216,18 @@ class MusicCommands(commands.Cog):
                 (track.uri, track.title, get_track_artwork(track), track.length / 1000)
             )
 
+        if vc.autoplay == wavelink.AutoPlayMode.enabled:
+            for track in vc.auto_queue:
+                songs_list.append(
+                    (
+                        track.uri,
+                        f"✨ {track.title} (Auto-Queue)",
+                        get_track_artwork(track),
+                        track.length / 1000,
+                    )
+                )
+
+        # Partial Only Shows 5 Songs
         if vc.autoplay == wavelink.AutoPlayMode.partial and not vc.auto_queue.is_empty:
             for track in list(vc.auto_queue)[:5]:
                 songs_list.append(
@@ -332,10 +353,10 @@ class MusicCommands(commands.Cog):
                     embed = create_now_playing_embed(
                         vc, current_track, is_persistent=True, bot_user=self.bot.user
                     )
-                    
+
                     # Send it fresh into the new text channel
                     new_msg = await interaction.channel.send(embed=embed)
-                    
+
                     # Re-cache the newly generated message reference globally
                     ACTIVE_PLAYERS[guild_id] = new_msg
         else:
@@ -358,8 +379,18 @@ class MusicCommands(commands.Cog):
         allowing users to clear the current music queue.
         """
         vc: WavelinkPlayer = interaction.guild.voice_client
+        track = list(vc.auto_queue)
+
         if vc:
             vc.queue.clear()
+            vc.auto_queue.clear()
+
+        if vc.autoplay == wavelink.AutoPlayMode.enabled:
+            vc.auto_queue.put(track[0])
+
+        if vc.autoplay == wavelink.AutoPlayMode.partial:
+            vc.auto_queue.put(track[0])
+
         await interaction.response.send_message(
             "The music queue has been cleared.", ephemeral=True
         )
@@ -369,19 +400,36 @@ class MusicCommands(commands.Cog):
     )
     async def shuffle(self, interaction: Interaction):
         """
-        Handles the /shuffle command,
-        allowing users to shuffle the current music queue.
+        Handles the /shuffle command, allowing users to shuffle the current music queue
+        especially the auto-queue.
         """
         vc: WavelinkPlayer = interaction.guild.voice_client
-        if vc and not vc.queue.is_empty:
-            vc.queue.shuffle()
-            await interaction.response.send_message(
-                "The music queue has been shuffled.", ephemeral=True
+        if not vc:
+            return await interaction.response.send_message(
+                "I'm not in a voice channel.", ephemeral=True
             )
-        else:
-            await interaction.response.send_message(
+
+        # CHECK BOTH: Is there anything to shuffle in either container?
+        if vc.queue.is_empty and vc.auto_queue.is_empty:
+            return await interaction.response.send_message(
                 "The queue is currently empty, nothing to shuffle.", ephemeral=True
             )
+
+        # Shuffle User Queue
+        if not vc.queue.is_empty:
+            vc.queue.shuffle()
+
+        # Shuffle Auto Queue (as we discussed, by clearing and re-adding)
+        if not vc.auto_queue.is_empty:
+            auto_tracks = list(vc.auto_queue)
+            random.shuffle(auto_tracks)
+            vc.auto_queue.clear()
+            for track in auto_tracks:
+                vc.auto_queue.put(track)
+
+        await interaction.response.send_message(
+            "The queue has been shuffled.", ephemeral=True
+        )
 
     @nextcord.slash_command(
         name="voteskip", description="Vote to skip the current song."
@@ -573,25 +621,33 @@ class MusicCommands(commands.Cog):
         )
 
     @nextcord.slash_command(
-        name="loop", description="Toggle looping of the current track."
+        name="loop", description="Toggle looping: None, Current Track, or Full Queue."
     )
     @has_dj_permissions()
     async def loop(self, interaction: Interaction):
         """
-        Handles the /loop command, allowing DJs to toggle looping of the current track.
+        Cycles through Wavelink QueueModes: Normal -> Loop (Track) -> Loop All (Queue).
         """
         vc: WavelinkPlayer = interaction.guild.voice_client
         if not vc or not vc.playing:
             return await interaction.response.send_message(
-                "Nothing is currently playing to loop.", ephemeral=True
+                "Nothing is currently playing.", ephemeral=True
             )
 
-        vc.loop = not getattr(vc, "loop", False)
-        status = "enabled" if vc.loop else "disabled"
+        # 1. Cycle logic: None -> Loop (Track) -> Loop All (Queue) -> None
+        if vc.queue.mode == wavelink.QueueMode.normal:
+            vc.queue.mode = wavelink.QueueMode.loop
+            status = "Looping current track"
+        elif vc.queue.mode == wavelink.QueueMode.loop:
+            vc.queue.mode = wavelink.QueueMode.loop_all
+            status = "Looping the entire queue"
+        else:
+            vc.queue.mode = wavelink.QueueMode.normal
+            status = "Looping disabled"
+
+        # 2. Update UI
         await update_player_message(vc, bot_user=self.bot.user)
-        await interaction.response.send_message(
-            f"Looping {status} for the current track.", ephemeral=True
-        )
+        await interaction.response.send_message(f"🔄 **{status}.**", ephemeral=True)
 
     @nextcord.slash_command(
         name="autoplay", description="Set autoplay mode for continuous music."
