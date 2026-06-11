@@ -49,4 +49,10 @@ jobs:
       run: ruff format . --check
 
     - name: Run Unit Test Suite
+      env:
+        PYTHONPATH: .
+        # This maps your encrypted GitHub Repository Secrets into the test runtime
+        BOT_TOKEN: ${{ secrets.BOT_TOKEN }}
+        LAVALINK_URI: ${{ secrets.LAVALINK_URI }}
+        LAVALINK_PASSWORD: ${{ secrets.LAVALINK_PASSWORD }}
       run: pytest tests/ -v

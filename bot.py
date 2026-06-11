@@ -10,6 +10,8 @@ from nextcord.ext import commands
 # Load variables from the .env file
 load_dotenv()
 bot_token = os.getenv("BOT_TOKEN")
+lavalink_uri = os.getenv("LAVALINK_URI", "http://127.0.0.1:2333")
+lavalink_password = os.getenv("LAVALINK_PASSWORD", "youshallnotpass")
 
 # Setup logging architecture
 logging.basicConfig(level=logging.INFO)
@@ -41,9 +43,7 @@ async def on_ready():
     """Connect to Lavalink node when the bot is ready and sync commands."""
     logger.info(f"🚀 Main Engine Online: Authenticated as {bot.user}")
 
-    node: wavelink.Node = wavelink.Node(
-        uri="http://127.0.0.1:2333", password="youshallnotpass"
-    )
+    node: wavelink.Node = wavelink.Node(uri=lavalink_uri, password=lavalink_password)
     await wavelink.Pool.connect(nodes=[node], client=bot)
     await bot.sync_application_commands()
 
