@@ -119,11 +119,23 @@ class MusicCommands(commands.Cog):
             except Exception:
                 try:
                     await vc.disconnect()
-                except Exception:
+                except Exception as e:
+                    logger.error(f"Error disconnecting from voice channel: {e}")
                     pass
                 vc = await voice_channel.connect(cls=WavelinkPlayer)
 
-        tracks = await wavelink.Playable.search(song)
+        try:
+            tracks = await wavelink.Playable.search(song)
+        except wavelink.exceptions.LavalinkLoadException:
+            logger.warning(f"Unsupported source or invalid query: {song}")
+            await interaction.followup.send(
+                "**Unsupported or Invalid Source:** Currently, this bot only "
+                "supports direct YouTube, YouTubeMusic and SoundCloud searches or URLs. "
+                "Please provide a valid YouTube or SoundCloud link, or a search term.",
+                ephemeral=True,
+                delete_after=MESSAGE_DELETE_TIMEOUT,
+            )
+            return
 
         if not tracks:
             await interaction.followup.send(

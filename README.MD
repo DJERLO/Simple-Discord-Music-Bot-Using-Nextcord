@@ -202,6 +202,13 @@ This workflow ensures that:
 * `/remove <position>` — Extracts a specific track from the queue by its index. *(DJ Only)*
 
 ---
+> [!IMPORTANT]
+> **Supported Audio Sources (v1.10):** > This version natively supports playback tracking *only* from the following three platforms due to upstream Lavalink driver configurations:
+> 1. **YouTube** (Standard URLs and search queries)
+> 2. **YouTube Music**
+> 3. **SoundCloud**
+>
+> ❌ **Spotify and Apple Music links are not supported out-of-the-box in this release.** Passing these links will be intercepted gracefully by the bot's exception boundaries without crashing your session audio engine. Support for metadata translation proxies is slated for a future development cycle.
 ## License
 
 This project is licensed under the [MIT License](LICENSE).
