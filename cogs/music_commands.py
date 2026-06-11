@@ -249,33 +249,30 @@ class MusicCommands(commands.Cog):
         name="help", description="Show available commands and usage."
     )
     async def help_command(self, interaction: Interaction):
-        """
-        Handles the /help command,
-        providing users with a list of available commands
-        and their descriptions.
-        """
+        """QA: Render a line-length safe, explicitly structured help manual."""
         help_text = (
             "**General Commands:**\n"
             "/join - Make the bot join your voice channel.\n"
             "/play [song name or URL] - Play a song or add it to the queue.\n"
             "/queue - Show the current music queue.\n"
+            "/nowplaying - Show details of the currently playing song.\n"
+            "/shuffle - Shuffle the current music queue.\n"
             "/ping - Check the bot's latency.\n"
-            "/help - Show this help message.\n\n"
+            "/help - Show this help message.\n"
             "/voteskip - Vote to skip the current song "
             "(requires 50% majority of listeners).\n\n"
             "**DJ Only Commands:**\n"
             "/volume - Set the playback volume (0-100). (DJ Only)\n"
             "/loop - Toggle looping of the current track. (DJ Only)\n"
-            "/autoplay <mode> - Set autoplay mode for continuous music. (DJ Only)\n"
+            "/autoplay <mode> - Set autoplay mode for continuous music. "
+            "(DJ Only)\n"
             "/skip - Skip the currently playing song. (DJ Only)\n"
             "/pause - Pause the currently playing song. (DJ Only)\n"
             "/resume - Resume the currently paused song. (DJ Only)\n"
-            "/shuffle - Shuffle the current music queue.\n"
-            "/nowplaying - Show details of the currently playing song.\n"
             "/stop - Stop playback and clear the queue. (DJ Only)\n"
-            "/queue - Show the current music queue.\n"
             "/clearqueue - Clear the current music queue. (DJ Only)\n"
-            "/remove [position] - Remove a specific track from the queue. (DJ Only)\n"
+            "/remove [position] - Remove a specific track from the queue. "
+            "(DJ Only)\n"
         )
         await interaction.response.send_message(help_text, ephemeral=True)
 
