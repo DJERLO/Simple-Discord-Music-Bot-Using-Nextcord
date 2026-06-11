@@ -161,7 +161,7 @@ async def test_remove_command_auto_queue_success(mock_update, cog):
     mock_auto_queue.__iter__ = MagicMock(return_value=iter([auto_track1, auto_track2]))
     mock_auto_queue.__len__ = MagicMock(return_value=2)
     mock_auto_queue.clear = MagicMock()
-    mock_auto_queue.put = AsyncMock()
+    mock_auto_queue.put = MagicMock()
 
     mock_vc.auto_queue = mock_auto_queue
     interaction.guild.voice_client = mock_vc

@@ -708,7 +708,7 @@ class MusicCommands(commands.Cog):
             # Clear old references completely and rebuild the state synchronously
             vc.auto_queue.clear()
             for track in updated_tracks:
-                await vc.auto_queue.put(track)
+                vc.auto_queue.put(track)
 
             queue_type = "Auto-Queue (Autoplay)"
 
