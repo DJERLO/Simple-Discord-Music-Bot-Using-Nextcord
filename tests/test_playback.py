@@ -12,14 +12,30 @@ from ui.embeds import ACTIVE_PLAYERS, GUILD_AUTOPLAY_MODES, MESSAGE_DELETE_TIMEO
 @pytest.mark.asyncio
 async def test_skip_command_playing(cog):
     interaction = AsyncMock(spec=nextcord.Interaction)
+    interaction.followup.send = AsyncMock()
     interaction.response.send_message = AsyncMock()
-    interaction.guild.voice_client.playing = True
-    interaction.guild.voice_client.paused = False
-    interaction.guild.voice_client.skip = AsyncMock()
 
+    # 1. Setup the Voice Client
+    mock_vc = AsyncMock(spec=WavelinkPlayer)
+    mock_vc.playing = True
+    mock_vc.paused = False
+    mock_vc.skip = AsyncMock()
+
+    # 2. Setup the shared Channel
+    mock_channel = AsyncMock(spec=nextcord.VoiceChannel)
+    mock_vc.channel = mock_channel
+
+    interaction.guild.voice_client = mock_vc
+
+    # 3. Setup the User's Voice state to match the VC channel
+    interaction.user = AsyncMock()
+    interaction.user.voice = AsyncMock()
+    interaction.user.voice.channel = mock_channel
+
+    # 4. Execution
     await cog.skip.callback(cog, interaction)
 
-    interaction.guild.voice_client.skip.assert_called_once()
+    mock_vc.skip.assert_called_once()
     interaction.response.send_message.assert_called_with(
         "Skipped the current song.", ephemeral=True
     )
@@ -363,3 +379,128 @@ async def test_join_restores_persisted_autoplay_mode(cog):
     await cog.join.callback(cog, interaction)
 
     assert mock_vc.autoplay == wavelink.AutoPlayMode.partial
+
+
+@pytest.mark.asyncio
+async def test_previous_command_navigates_unified_history(cog):
+    """
+    INTEGRITY TEST:
+    Ensures that regardless of track origin, the bot uses the unified
+    history list to navigate backward.
+    """
+    interaction = AsyncMock(spec=nextcord.Interaction)
+    interaction.response.defer = AsyncMock()
+    interaction.followup.send = AsyncMock()
+
+    mock_vc = AsyncMock(spec=WavelinkPlayer)
+    mock_vc.channel = AsyncMock(spec=nextcord.VoiceChannel)
+    mock_vc.queue = MagicMock(spec=wavelink.Queue)
+
+    interaction.guild.voice_client = mock_vc
+    interaction.user.voice.channel = mock_vc.channel
+
+    # 1. Setup playing track and unified history
+    mock_current = MagicMock(spec=wavelink.Playable)
+    mock_vc.current = mock_current
+
+    # We mock the property directly as it acts as our interface
+    mock_prev_track = MagicMock(spec=wavelink.Playable)
+    type(mock_vc).last_played_track = PropertyMock(return_value=mock_prev_track)
+
+    # 2. Execution
+    await cog.previous.callback(cog, interaction)
+
+    # 3. Verification
+    # Assert play was called with the correct track
+    mock_vc.play.assert_called_with(mock_prev_track, add_history=False)
+
+    # Assert that current track was put at index 0 to preserve forward-flow
+    mock_vc.queue.put_at.assert_called_with(0, mock_current)
+
+    interaction.followup.send.assert_called_with(
+        "Switched to the previous track!",
+        ephemeral=True,
+        delete_after=MESSAGE_DELETE_TIMEOUT,
+    )
+
+
+@pytest.mark.asyncio
+async def test_previous_command_no_history_fails(cog):
+    # 1. Setup the Interaction Mock properly
+    interaction = AsyncMock(spec=nextcord.Interaction)
+
+    # CRITICAL: These must be AsyncMocks so they can be awaited
+    interaction.response.defer = AsyncMock()
+    interaction.followup.send = AsyncMock()
+
+    # 2. Setup the Voice Client
+    mock_vc = AsyncMock(spec=WavelinkPlayer)
+    mock_vc.channel = AsyncMock(spec=nextcord.VoiceChannel)
+    mock_vc.queue = MagicMock(spec=wavelink.Queue)
+
+    # 3. Setup the User Voice state to trigger the channel check
+    # We set this to something different than mock_vc.channel to trigger the 'if' block
+    different_channel = AsyncMock(spec=nextcord.VoiceChannel)
+    interaction.user.voice = AsyncMock()
+    interaction.user.voice.channel = different_channel
+
+    interaction.guild.voice_client = mock_vc
+
+    # Force property to return None
+    type(mock_vc).last_played_track = PropertyMock(return_value=None)
+
+    # 4. Execution
+    await cog.previous.callback(cog, interaction)
+
+    # 5. Verification
+    interaction.followup.send.assert_called_once()
+
+
+@pytest.mark.asyncio
+async def test_remove_command_removes_from_regular_queue(cog):
+    interaction = AsyncMock(spec=nextcord.Interaction)
+    interaction.response.send_message = AsyncMock()
+
+    mock_vc = AsyncMock(spec=WavelinkPlayer)
+    # Mocking a queue with 2 items
+    mock_vc.queue = [
+        MagicMock(spec=wavelink.Playable, title="Track 1"),
+        MagicMock(spec=wavelink.Playable, title="Track 2"),
+    ]
+    # Auto-queue with 1 item
+    mock_vc.auto_queue = [MagicMock(spec=wavelink.Playable, title="Auto Track")]
+
+    interaction.guild.voice_client = mock_vc
+
+    # Remove Track 1 (Position 1)
+    await cog.remove.callback(cog, interaction, position=1)
+
+    assert len(mock_vc.queue) == 1
+    assert mock_vc.queue[0].title == "Track 2"
+    interaction.response.send_message.assert_called()
+
+
+@pytest.mark.asyncio
+async def test_remove_command_removes_from_auto_queue(cog):
+    interaction = AsyncMock(spec=nextcord.Interaction)
+    interaction.response.send_message = AsyncMock()
+
+    mock_vc = AsyncMock(spec=WavelinkPlayer)
+    # Setup: 1 regular track, 1 auto track
+    track1 = MagicMock(spec=wavelink.Playable, title="Reg Track", identifier="1")
+    track2 = MagicMock(spec=wavelink.Playable, title="Auto Track 1", identifier="2")
+    track3 = MagicMock(spec=wavelink.Playable, title="Auto Track 1", identifier="3")
+
+    mock_vc.queue = [track1]
+    mock_vc.auto_queue = MagicMock()
+    mock_vc.auto_queue.__iter__.return_value = [track2, track3]
+    mock_vc.auto_queue.__len__.return_value = 2
+
+    interaction.guild.voice_client = mock_vc
+
+    # Remove Auto Track (Position 2)
+    await cog.remove.callback(cog, interaction, position=2)
+
+    # Verification
+    mock_vc.auto_queue.clear.assert_called_once()
+    mock_vc.auto_queue.put.assert_called_once_with(track3)

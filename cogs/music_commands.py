@@ -29,7 +29,28 @@ class WavelinkPlayer(wavelink.Player, nextcord.VoiceProtocol):
     Wavelink's Player and Nextcord's VoiceProtocol.
     """
 
-    pass
+    @property
+    def last_played_track(self) -> wavelink.Playable | None:
+        """
+        Unified history accessor. Since all tracks are logged in
+        vc.queue.history via on_wavelink_track_start, we only need
+        to look there.
+        """
+        if not self.current or not self.queue.history:
+            return None
+
+        try:
+            # Find the position of the track currently playing
+            idx = self.queue.history.index(self.current)
+
+            # If the current track is found and it's not the first one,
+            # return the one before it.
+            return self.queue.history[idx - 1] if idx > 0 else None
+
+        except ValueError:
+            # If the current track isn't in history yet (e.g. just started),
+            # the last item in history is the previous one.
+            return self.queue.history[-1]
 
 
 class MusicCommands(commands.Cog):
@@ -55,6 +76,8 @@ class MusicCommands(commands.Cog):
     - **/volume**: Set the playback volume (0-100) (DJ Only).
     - **/loop**: Toggle looping of the current track (DJ Only).
     - **/autoplay**: Set autoplay mode for continuous music (DJ Only).
+    - **/voteskip**: Vote to skip the current song (DJ Only).
+    - **/previous**: Play the previous song (DJ Only).
     """
 
     def __init__(self, bot: commands.Bot):
@@ -190,7 +213,57 @@ class MusicCommands(commands.Cog):
             if vc.autoplay == wavelink.AutoPlayMode.partial:
                 kwargs["populate"] = True
                 kwargs["max_populate"] = 5
-            await vc.play(track, **kwargs)
+            await vc.play(track, add_history=True, **kwargs)
+
+    @nextcord.slash_command(name="previous", description="Play the previous song")
+    @has_dj_permissions()
+    async def previous(self, interaction: Interaction):
+        """
+        Handles the /previous command, allowing users to play the previous song.
+        """
+        await interaction.response.defer(ephemeral=True)
+
+        vc: WavelinkPlayer = interaction.guild.voice_client
+
+        if not interaction.user.voice or not interaction.user.voice.channel:
+            await interaction.followup.send(
+                "You must be in a voice channel.",
+                ephemeral=True,
+                delete_after=MESSAGE_DELETE_TIMEOUT,
+            )
+            return
+
+        # Don't let user do a previous command in other voice command
+        if interaction.user.voice.channel != vc.channel:
+            await interaction.followup.send(
+                "You must be in the same voice channel as me to use this command.",
+                ephemeral=True,
+                delete_after=MESSAGE_DELETE_TIMEOUT,
+            )
+            return
+        # Current Index - 1 = last_track
+        prev_track = vc.last_played_track  # Custom Property Extension
+
+        if not prev_track:
+            return await interaction.followup.send(
+                "No previous track to play.", ephemeral=True
+            )
+
+        # Get Current Track and put it on the top so we can do forward normally
+        current_track = vc.current
+        vc.queue.put_at(0, current_track)
+
+        # Play the Previous Track but dont put it on history
+        # otherwise duplication happens
+        await vc.play(prev_track, add_history=False)
+        # Update the embed now playing track
+        await update_player_message(vc, bot_user=self.bot.user)
+
+        await interaction.followup.send(
+            "Switched to the previous track!",
+            ephemeral=True,
+            delete_after=MESSAGE_DELETE_TIMEOUT,
+        )
 
     @nextcord.slash_command(name="queue", description="Show the current music queue.")
     async def queue(self, interaction: Interaction):
@@ -300,6 +373,7 @@ class MusicCommands(commands.Cog):
             "/autoplay <mode> - Set autoplay mode for continuous music. "
             "(DJ Only)\n"
             "/skip - Skip the currently playing song. (DJ Only)\n"
+            "/previous - Play the previous song. (DJ Only)\n"
             "/pause - Pause the currently playing song. (DJ Only)\n"
             "/resume - Resume the currently paused song. (DJ Only)\n"
             "/stop - Stop playback and clear the queue. (DJ Only)\n"
@@ -515,6 +589,13 @@ class MusicCommands(commands.Cog):
         """
         vc: WavelinkPlayer = interaction.guild.voice_client
         if vc and (vc.playing or vc.paused):
+            if interaction.user.voice.channel != vc.channel:
+                await interaction.followup.send(
+                    "You must be in the same voice channel as me to use this command.",
+                    ephemeral=True,
+                    delete_after=MESSAGE_DELETE_TIMEOUT,
+                )
+                return
             await vc.skip()
             await interaction.response.send_message(
                 "Skipped the current song.", ephemeral=True

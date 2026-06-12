@@ -195,6 +195,7 @@ This workflow ensures that:
 * `/loop <normal|loop|loop_all>` — Toggles repeat playback for the currently active track or loop_all tracks in the queue. *(DJ Only)*
 * `/autoplay <mode>` — Configures smart-mix autoplay for continuous streams. *(DJ Only)*
 * `/skip` — Instantly bypasses the current song without requiring a vote. *(DJ Only)*
+* `/previous` — Play the previous song in the history. *(DJ Only)*
 * `/pause` — Freezes audio streaming on the active Lavalink node. *(DJ Only)*
 * `/resume` — Unpauses the active track to continue audio playback. *(DJ Only)*
 * `/stop` — Stops the active audio, clears the queue, and leaves the channel. *(DJ Only)*

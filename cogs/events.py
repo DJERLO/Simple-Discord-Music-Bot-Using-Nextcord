@@ -13,6 +13,7 @@ from ui.embeds import (
     VOICE_DISCONNECT_TIMEOUT,
     VOTE_SKIPS,
     create_now_playing_embed,
+    format_time,
 )
 
 logger = logging.getLogger("MusicBot")
@@ -150,8 +151,9 @@ class AudioEvents(commands.Cog):
             player, track, is_persistent=True, bot_user=self.bot.user
         )
 
-        from ui.embeds import format_time
-
+        # Put all songs to history to allow history playback
+        player.queue.history.put(track)
+        logger.info(f"Now Playing: {track.title} by {track.author}")
         await self.bot.change_presence(
             activity=nextcord.Activity(
                 type=nextcord.ActivityType.listening,
