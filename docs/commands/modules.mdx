@@ -1,0 +1,54 @@
+---
+title: "Module Reference"
+sidebarTitle: "Modules"
+description: "See how the modular bot architecture maps to the current cogs, core helpers, and UI components."
+icon: "toolbox"
+---
+
+The refactored bot now groups behavior by responsibility instead of keeping everything in one file. Use this page as a quick map when you are updating commands, events, or the interface.
+
+## Current modules
+
+### Music commands
+
+The `MusicCommands` cog in `cogs/music_commands.py` owns the public slash command surface for playback, queue browsing, and helper commands:
+
+- `/play`
+- `/queue`
+- `/nowplaying`
+- `/join`
+- `/ping`
+- `/help`
+- `/voteskip`
+- `/skip`
+- `/pause`
+- `/resume`
+- `/stop`
+- `/volume`
+- `/loop`
+- `/autoplay`
+- `/clearqueue`
+- `/shuffle`
+- `/previous`
+- `/remove`
+
+### Events
+
+The `AudioEvents` cog in `cogs/events.py` manages the audio lifecycle:
+
+- voice-state cleanup when the channel becomes empty
+- persistent "Now Playing" embeds
+- autoplay and queue progression
+- Discord presence updates
+
+### Utility and permissions
+
+The shared helpers live in:
+
+- `core/decorators.py` for DJ and role-based checks
+- `ui/embeds.py` for rich embed generation
+- `ui/views.py` for queue navigation and interactive buttons
+
+<Tip>
+  When you add new features, keep them as separate cogs and document them here so the docs stay aligned with the code.
+</Tip>

@@ -1,0 +1,77 @@
+{
+  "$schema": "https://mintlify.com/docs.json",
+  "name": "Simple Discord Music Bot",
+  "theme": "maple",
+  "colors": {
+    "primary": "#fc0404",
+    "light": "#fc7c7c"
+  },
+  "favicon": "favicon.svg",
+  "navbar": {
+    "primary": {
+      "type": "github",
+      "href": "https://github.com/DJERLO/Simple-Discord-Music-Bot-Using-Nextcord"
+    }
+  },
+  "footer": {
+    "socials": {
+      "github": "https://github.com/DJERLO/Simple-Discord-Music-Bot-Using-Nextcord"
+    }
+  },
+  "navigation": {
+    "groups": [
+      {
+        "group": "Get Started",
+        "pages": [
+          "introduction",
+          "quickstart",
+          "configuration"
+        ]
+      },
+      {
+        "group": "Music",
+        "pages": [
+          "commands/playback",
+          "commands/queue",
+          "commands/modules"
+        ]
+      },
+      {
+        "group": "Utility",
+        "pages": [
+          "commands/utility",
+          "commands/commands"
+        ]
+      },
+      {
+        "group": "Architecture",
+        "pages": [
+          "architecture/modular-layout",
+          "architecture/overview",
+          "architecture/queue-view"
+        ]
+      },
+      {
+        "group": "Setup",
+        "pages": [
+          "setup/environment-variables",
+          "setup/local-development"
+        ]
+      },
+      {
+        "group": "Development",
+        "pages": [
+          "contributing",
+          "development/testing"
+        ]
+      },
+      {
+        "group": "Guides",
+        "pages": [
+          "guides/lavalink-setup",
+          "guides/bot-setup"
+        ]
+      }
+    ]
+  }
+}

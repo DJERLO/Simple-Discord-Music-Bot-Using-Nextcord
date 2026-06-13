@@ -1,0 +1,137 @@
+---
+title: "Queue Commands: Browse, Shuffle, and Clear the Queue"
+sidebarTitle: "Queue"
+description: "Manage the music queue with slash commands to browse paginated track listings, randomize the playback order, and clear all upcoming songs."
+icon: "people-line"
+---
+
+The queue commands give you visibility and control over the tracks lined up after the current song. You can browse the full queue in a paginated embed, randomize the playback order with one command, or clear upcoming tracks while leaving the current song untouched. All three commands are available while the bot is active in your voice channel.
+
+---
+
+## `/queue`
+
+<Info>
+  Displays the current music queue in a paginated embed. Only the user who ran the command can navigate between pages.
+</Info>
+
+`/queue` converts the live Wavelink queue into a list of track tuples and hands them to a `QueueView` instance, which renders a Discord embed with pagination buttons. The message is sent ephemerally so only the invoker sees it, and the view holds a reference to the message so it can disable buttons automatically when it times out.
+
+**Behavior**
+
+- Checks that the bot is connected to a voice channel (`vc` is not `None`) and that `vc.queue` is not empty; sends an error and returns early otherwise.
+- Iterates the Wavelink queue and builds a list of tuples in the form `(track.uri, track.title, track.artwork, track.length / 1000)`.
+- Creates a `QueueView` with the songs list, the invoking user, and the guild ID as a string.
+- Sends the first-page embed and the view as an ephemeral message.
+- Stores the message reference in `view.message` so the timeout handler can later disable the buttons.
+
+**Error responses**
+
+| Situation | Response |
+| --- | --- |
+| Bot is not connected or queue is empty | `"The queue is currently empty."` (ephemeral) |
+
+---
+
+### QueueView UI
+
+The `QueueView` class (defined in `views.py`) is a `nextcord.ui.View` subclass that handles all pagination logic. It renders an embed on demand and updates it in place when the user clicks a button, so no new messages are created during navigation.
+
+**Embed format**
+
+- **Title:** `🎶 Music Queue (Page X/Y)` — page numbers are 1-indexed.
+- **Description:** one line per track in the current page slice, formatted as `**N.** Title (M:SS)`.
+- **Footer:** `Total Songs: N` where N is the full queue length.
+- **Color:** green (`nextcord.Color.green()`).
+
+**Buttons**
+
+| Button | Label | Style | Disabled when |
+| --- | --- | --- | --- |
+| Previous page | `⬅️ Prev` | Primary (blue) | Already on page 1 |
+| Next page | `Next ➡️` | Primary (blue) | Already on the last page |
+
+Button states are recalculated after every page change via `update_button_states()`.
+
+**Session lock**
+
+The `interaction_check` method compares `interaction.user.id` to `self.interaction_user.id`. If a different user clicks a button, they receive `"Only the user who requested the queue menu can look through pages."` ephemerally and the page does not change.
+
+**Timeout**
+
+The view has a **60-second timeout**. When it expires, `on_timeout` disables all buttons and edits the original message to show the grayed-out view, so users can still see the last page but can no longer navigate.
+
+```python
+async def on_timeout(self):
+    for child in self.children:
+        child.disabled = True
+    if self.message:
+        try:
+            await self.message.edit(view=self)
+        except Exception:
+            pass
+```
+
+**Pagination math**
+
+`QueueView` shows **10 tracks per page** by default (`per_page=10`). The total page count is calculated as:
+
+```python
+max_pages = max(1, (len(self.songs) - 1) // self.per_page + 1)
+```
+
+Each page slice is `songs[page * per_page : (page + 1) * per_page]`.
+
+<Note>
+  The duration displayed in the queue embed is derived from `track.length / 1000` (converting Wavelink's milliseconds to seconds), then formatted inline as `M:SS` within `get_embed()` without calling the shared `format_time` helper.
+</Note>
+
+---
+
+## `/shuffle`
+
+<Info>
+  Randomly reorders all tracks in the queue. The currently playing song is not affected.
+</Info>
+
+`/shuffle` delegates directly to the Wavelink built-in `vc.queue.shuffle()`. It is a one-shot operation — there is no way to undo a shuffle, but you can shuffle again to get a new random order.
+
+**Behavior**
+
+- Checks that the bot is connected and that `vc.queue` is not empty.
+- Calls `vc.queue.shuffle()` to randomize the order of all queued (upcoming) tracks.
+- Sends `"The music queue has been shuffled."` ephemerally on success.
+
+**Error responses**
+
+| Situation | Response |
+| --- | --- |
+| Queue is empty or bot is not connected | `"The queue is currently empty, nothing to shuffle."` (ephemeral) |
+
+<Tip>
+  Run `/queue` after `/shuffle` to confirm the new track order before the next song starts.
+</Tip>
+
+---
+
+## `/clearqueue`
+
+<Info>
+  Removes all upcoming tracks from the queue without stopping the currently playing song.
+</Info>
+
+`/clearqueue` calls `vc.queue.clear()` on the Wavelink player. Unlike `/stop`, it does **not** disconnect the bot or interrupt the current track — only the queued songs waiting their turn are removed.
+
+**Behavior**
+
+- Retrieves the guild's voice client (`vc`).
+- If `vc` is not `None`, calls `vc.queue.clear()` to remove all queued tracks.
+- Sends `"The music queue has been cleared."` ephemerally regardless of whether `vc` exists, so the response is always delivered.
+
+<Note>
+  `/clearqueue` gracefully handles the case where the bot is not in a voice channel — it skips the `queue.clear()` call but still sends the confirmation message.
+</Note>
+
+**Error responses**
+
+There are no error paths for this command; it always succeeds from the user's perspective.

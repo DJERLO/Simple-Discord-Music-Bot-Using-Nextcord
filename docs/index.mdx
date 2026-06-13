@@ -1,0 +1,55 @@
+---
+title: "Simple Discord Music Bot"
+sidebarTitle: "Home"
+description: "A high-performance Discord music bot built with Nextcord and Wavelink, powered by Lavalink for crystal-clear, low-latency audio streaming."
+icon: "home"
+---
+
+Simple Discord Music Bot brings studio-quality music playback to any Discord server. Powered by [Lavalink](https://github.com/lavalink-devs/Lavalink) for offloaded audio processing and [Wavelink](https://github.com/PythonistaGuild/Wavelink) for async streaming, the bot supports YouTube search, full playlist queuing, and an interactive paginated queue browser — all through Discord's native slash command interface.
+
+<CardGroup cols={2}>
+  <Card title="Quickstart" icon="rocket" href="/quickstart">
+    Get the bot running in your server in under 10 minutes.
+  </Card>
+  <Card title="Configuration" icon="gear" href="/configuration">
+    Configure your bot token, Lavalink credentials, and audio sources.
+  </Card>
+  <Card title="Command Reference" icon="terminal" href="/commands/commands">
+    Explore the current 18 slash commands across music, DJ, queue, and utility modules.
+  </Card>
+  <Card title="Architecture" icon="diagram-project" href="/architecture/overview">
+    Understand how Nextcord, Wavelink, and Lavalink work together.
+  </Card>
+</CardGroup>
+
+## What the Bot Does
+
+Simple Discord Music Bot handles the full music lifecycle — from joining a voice channel to cleaning up embeds after the last track ends. Key capabilities include:
+
+- **Lavalink audio backend** — offloads decoding and streaming to a dedicated Java node, keeping the Python process lightweight
+- **YouTube & SoundCloud search** — find tracks by name or paste a direct URL
+- **Playlist support** — enqueue entire playlists in a single `/play` command
+- **Paginated queue browser** — session-locked interactive embed with Prev/Next buttons, showing 10 tracks per page
+- **Live Now Playing embeds** — auto-updating embed that edits in place as tracks change, then self-deletes when the queue ends
+- **Presence sync** — bot status reflects the current track title, artist, and live timestamps
+
+## Getting Started
+
+<Steps>
+  <Step title="Start the Lavalink node">
+    Run `docker-compose up -d` to spin up the pre-configured Lavalink container.
+  </Step>
+  <Step title="Install Python dependencies">
+    Create a virtual environment and run `pip install -r requirements.txt`.
+  </Step>
+  <Step title="Configure your bot token">
+    Create a `.env` file at the project root and set `BOT_TOKEN=your_token_here`.
+  </Step>
+  <Step title="Run the bot">
+    Execute `python bot.py` — the bot registers all slash commands on startup and connects to Lavalink automatically.
+  </Step>
+</Steps>
+
+<Note>
+  Lavalink must be running **before** you start `bot.py`. The bot connects to the node during the `on_ready` event, and playback commands will fail if the connection is unavailable.
+</Note>

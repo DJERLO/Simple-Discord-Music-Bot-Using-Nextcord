@@ -1,0 +1,179 @@
+---
+title: "Configuration: Bot Token, Lavalink, and Permissions"
+sidebarTitle: "Configuration"
+description: "Set up your bot token, Lavalink connection credentials, server audio settings, and required Discord permissions for full functionality."
+icon: "gear-code"
+---
+
+You configure this bot in three places: a `.env` file for secrets, the Lavalink bootstrap in `bot.py`, and `application.yml` for the audio server itself. Understanding where each setting lives — and how they must stay in sync — helps you move the bot between machines or tune playback safely. For the full variable reference, see [Environment Variables](/setup/environment-variables).
+
+
+## Environment Variables
+
+The bot uses `python-dotenv` to load sensitive values from a `.env` file in the project root at startup. This keeps secrets out of source code and out of version control.
+
+<Note>
+  The `.env` file is listed in `.gitignore` and should never be committed to your repository. Anyone with your bot token can control your bot and potentially abuse your Discord application.
+</Note>
+
+### Required Variables
+
+| Variable | Description |
+| --- | --- |
+| `BOT_TOKEN` | Your Discord bot's secret token. Required — the bot will not start without it. |
+
+**How to get your token:**
+
+1. Go to the [Discord Developer Portal](https://discord.com/developers/applications)
+2. Select your application (or create one) and open the **Bot** tab
+3. Click **Reset Token** to reveal a fresh token, then copy it immediately
+4. Paste it into your `.env` file as shown below
+
+**Example `.env` file:**
+
+```env
+BOT_TOKEN=your_discord_bot_token_here
+```
+
+## Lavalink Connection (bot.py)
+
+The bot establishes its connection to the Lavalink audio server inside the `on_ready` event in `bot.py`. The URI and password are currently hard-coded:
+
+```python
+node: wavelink.Node = wavelink.Node(uri="http://127.0.0.1:2333", password="youshallnotpass")
+await wavelink.Pool.connect(nodes=[node], client=bot)
+```
+
+| Parameter | Default Value | Description |
+| --- | --- | --- |
+| `uri` | `http://127.0.0.1:2333` | The address of the Lavalink node. Port `2333` must match `server.port` in `application.yml`. |
+| `password` | `youshallnotpass` | The shared secret used to authenticate with the Lavalink node. Must match `lavalink.server.password` in `application.yml`. |
+
+**Running Lavalink on a remote server:**
+
+If your Lavalink node is hosted on a separate machine (for example, a VPS), update the `uri` to point to that server's IP or hostname:
+
+```python
+node: wavelink.Node = wavelink.Node(
+    uri="http://your-server-ip:2333",
+    password="your-custom-password"
+)
+```
+
+Make sure the remote server's firewall exposes port `2333` and that `application.yml` on that server uses the same password you set here.
+
+<Warning>
+  Changing the password in `application.yml` without updating the matching `password` argument in `bot.py` (or vice versa) will cause the bot to fail authentication against the Lavalink node and audio will not work. Always update both values together.
+</Warning>
+
+## Lavalink Server Configuration (application.yml)
+
+The `application.yml` file is mounted into the Lavalink Docker container and controls the audio server's behaviour. It is located in the project root and passed to Docker via the volume definition in `docker-compose.yml`.
+
+### Server Settings
+
+```yaml
+server:
+  port: 2333
+  address: 0.0.0.0
+```
+
+| Setting | Value | Description |
+| --- | --- | --- |
+| `server.port` | `2333` | The port Lavalink listens on. Must match the port in `bot.py`'s `uri`. |
+| `server.address` | `0.0.0.0` | Binds Lavalink to all network interfaces so Docker can route traffic to it. |
+
+### Authentication
+
+```yaml
+lavalink:
+  server:
+    password: "youshallnotpass"
+```
+
+This password must match the `password` argument in `bot.py`. See the warning above before changing it.
+
+### Audio Sources
+
+```yaml
+lavalink:
+  server:
+    sources:
+      youtube: false      # Handled by the YouTube plugin instead
+      soundcloud: true
+      scSearch: true
+      local: false
+      http: true
+    bufferDurationMs: 400
+```
+
+| Source | Enabled | Notes |
+| --- | --- | --- |
+| `youtube` | `false` (via native) | YouTube is handled by the external plugin below — the built-in source is disabled |
+| `soundcloud` | `true` | Enables SoundCloud track streaming |
+| `scSearch` | `true` | Enables SoundCloud search queries |
+| `http` | `true` | Enables streaming from direct audio URLs (MP3, etc.) — required for 24/7 stream URLs |
+| `local` | `false` | Local file playback is disabled |
+| `bufferDurationMs` | `400` | Audio buffer size in milliseconds; increase if you experience dropouts on slow connections |
+
+### YouTube Plugin
+
+YouTube support is provided by the `youtube-plugin` rather than Lavalink's built-in YouTube source, which gives more reliable access:
+
+```yaml
+lavalink:
+  plugins:
+    - dependency: "dev.lavalink.youtube:youtube-plugin:1.18.1"
+
+plugins:
+  youtube:
+    enabled: true
+    allowSearch: true
+    allowDirectVideoIds: true
+    allowDirectPlaylistIds: true
+```
+
+| Setting | Value | Description |
+| --- | --- | --- |
+| `enabled` | `true` | Activates the YouTube plugin |
+| `allowSearch` | `true` | Allows searching YouTube by keyword (e.g., `/play lofi hip hop`) |
+| `allowDirectVideoIds` | `true` | Allows playing tracks via a direct YouTube video URL |
+| `allowDirectPlaylistIds` | `true` | Allows enqueueing an entire YouTube playlist via its URL |
+
+### Memory Allocation
+
+The Docker container is configured to allocate a maximum of 512 MB of RAM to the Java process:
+
+```yaml
+# docker-compose.yml
+environment:
+  - _JAVA_OPTIONS=-Xmx512M
+```
+
+This is suitable for a small to medium-sized server. If you run many simultaneous streams or notice Lavalink being terminated by the OS, increase this value (e.g., `-Xmx1G` for 1 GB).
+
+## Discord Bot Permissions
+
+When inviting the bot to your server, grant the following permissions. All of these are required for normal operation:
+
+**Voice Permissions:**
+
+- **Connect** — allows the bot to join voice channels
+- **Speak** — allows the bot to transmit audio into a voice channel
+
+**Text Permissions:**
+
+- **Send Messages** — required to post Now Playing embeds and command responses
+- **Embed Links** — required to render rich embeds with artwork and track details
+- **Read Message History** — required so the bot can locate and edit its persistent Now Playing message
+
+**Gateway Intents:**
+
+The bot enables the `message_content` privileged intent in code:
+
+```python
+intents = nextcord.Intents.default()
+intents.message_content = True
+```
+
+You must also enable **Message Content Intent** in the Discord Developer Portal under your application's **Bot → Privileged Gateway Intents** section, otherwise Discord will silently deny the intent and certain bot behaviours may not function correctly.

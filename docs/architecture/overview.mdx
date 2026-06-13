@@ -1,0 +1,168 @@
+---
+title: "How the Music Bot Works: Nextcord, Wavelink, and Lavalink"
+sidebarTitle: "Overview"
+description: "Explore how Nextcord, Wavelink, and Lavalink interact at runtime to handle slash commands, audio streaming, and Discord presence updates."
+icon: "book-open-lines"
+---
+
+The Simple Discord Music Bot is built on three cooperating layers: Nextcord manages the Discord Gateway and slash commands, Wavelink bridges Python async code to a dedicated audio server, and Lavalink handles all the heavy lifting of audio decoding and streaming. Understanding how these layers interact makes it much easier to extend the bot, debug playback issues, or tune its configuration.
+
+## Component Overview
+
+Each layer has a distinct responsibility, and they communicate in a strict top-down chain at runtime.
+
+**1. Discord (Nextcord)**
+
+Nextcord connects to the Discord Gateway over a WebSocket and registers all slash commands via `bot.sync_application_commands()`. It manages voice channel connections, delivers embed messages to text channels, and dispatches Wavelink events to the right handlers. You now define the major slash command behavior in `cogs/music_commands.py`, while the audio lifecycle listeners live in `cogs/events.py`.
+
+**2. Wavelink**
+
+Wavelink is an async Python library that acts as the glue between Nextcord and Lavalink. It owns the `WavelinkPlayer` (which wraps Nextcord's `VoiceProtocol`), manages the per-guild track queue, and fires events like `on_wavelink_track_start` and `on_wavelink_track_end` that the modular event cog listens to. Wavelink communicates with Lavalink over HTTP and WebSocket using the REST and WS endpoints defined in `application.yml`.
+
+**3. Lavalink**
+
+Lavalink is a standalone Java audio server that runs as a separate process (or Docker container). It receives play instructions from Wavelink, resolves YouTube/SoundCloud URLs, decodes the audio stream, and pushes the audio data directly to Discord's voice servers — completely bypassing the bot's Python process. This is why no local FFmpeg installation is required on the bot host.
+
+```text
+Discord Gateway
+      │
+      ▼
+  Nextcord (bot.py)
+      │  slash commands / voice channel events
+      ▼
+  Wavelink (WavelinkPlayer, queue, events)
+      │  HTTP + WebSocket (port 2333)
+      ▼
+  Lavalink (audio decode, stream to Discord)
+      │  UDP audio stream
+      ▼
+Discord Voice Servers
+```
+
+## WavelinkPlayer Bridge
+
+Nextcord's voice system expects a class that implements `nextcord.VoiceProtocol`, while Wavelink's playback system requires a `wavelink.Player`. The `WavelinkPlayer` class satisfies both contracts with a multiple-inheritance declaration and one small history helper:
+
+```python
+class WavelinkPlayer(wavelink.Player, nextcord.VoiceProtocol):
+    @property
+    def last_played_track(self) -> wavelink.Playable | None:
+        ...
+```
+
+That extra property gives `/previous` a stable way to inspect the player's history, while the MRO still lets Nextcord and Wavelink initialise the same object correctly. Because of this bridge:
+
+- `interaction.guild.voice_client` returns the `WavelinkPlayer` instance when the bot is connected to a voice channel, allowing Nextcord to treat it as a standard voice client.
+- The `cls` argument in `voice_channel.connect(cls=WavelinkPlayer)` tells Nextcord to instantiate `WavelinkPlayer` instead of its default `VoiceClient`, giving Wavelink control of the connection.
+- Commands that need the player simply cast `interaction.guild.voice_client` to `WavelinkPlayer` with a type annotation: `vc: WavelinkPlayer = interaction.guild.voice_client`.
+
+## Lavalink Node Connection
+
+The bot connects to Lavalink inside the `on_ready` event, so the node is guaranteed to be available before any slash command can be processed:
+
+```python
+@bot.event
+async def on_ready():
+    node: wavelink.Node = wavelink.Node(uri="http://127.0.0.1:2333", password="youshallnotpass")
+    await wavelink.Pool.connect(nodes=[node], client=bot)
+    await bot.sync_application_commands()
+```
+
+- A **single node** is registered with `wavelink.Pool`. Wavelink's pool supports multiple nodes for load balancing, but a single node is sufficient for most deployments.
+- The `uri` and `password` values must exactly match the `server.port` and `lavalink.server.password` fields in `application.yml`. The defaults (`2333` / `youshallnotpass`) work out of the box with the provided Docker Compose setup.
+- `wavelink.Pool.connect` establishes the persistent WebSocket connection that Wavelink uses to send and receive playback events from Lavalink.
+
+## Event Flow: Track Lifecycle
+
+Wavelink fires two key events that drive the "Now Playing" experience. Both are registered as top-level `@bot.event` coroutines in `bot.py`.
+
+### `on_wavelink_track_start(payload)`
+
+Triggered by Lavalink the moment audio begins streaming. The payload carries a `TrackStartEventPayload` with two attributes: `player` (the `WavelinkPlayer` for this guild) and `track` (the `wavelink.Playable` that started).
+
+The handler:
+
+1. **Builds a green embed** titled `💿 Now Playing` with the track title as a hyperlink to its URI, an Artist field, a Duration field (formatted `M:SS`), artwork as the embed image, and a footer showing the requester's display name and avatar.
+2. **Updates bot presence** to `ActivityType.listening` with a name string of `"{track.title} by {track.author} [{duration}]"` and live timestamps so Discord displays an elapsed-time counter.
+3. **Manages the persistent message** via the `ACTIVE_PLAYERS` dict:
+   - If an existing message is stored for the guild, it edits that message with the new embed (so the "Now Playing" card updates in place between tracks).
+   - If no message exists, it sends a new embed to the voice channel (`player.channel.send(embed=embed)`) and stores the returned message object in `ACTIVE_PLAYERS`.
+
+### `on_wavelink_track_end(payload)`
+
+Triggered when Lavalink finishes a track (natural end, skip, or error). The payload carries a `TrackEndEventPayload` with the `player`.
+
+The handler:
+
+1. **Checks the queue**: if `player.queue.is_empty` is `False`, it calls `player.play(next_track)` on the next item, which triggers `on_wavelink_track_start` again.
+2. **Cleans up** when the queue is exhausted:
+   - Deletes the "Now Playing" message stored in `ACTIVE_PLAYERS`.
+   - Sets `ACTIVE_PLAYERS[guild_id]` to `None`.
+   - Calls `player.disconnect()` to leave the voice channel.
+   - Resets bot presence to `None` via `bot.change_presence(activity=None)`.
+
+## ACTIVE\_PLAYERS Registry
+
+The module-level dictionary `ACTIVE_PLAYERS` is the bot's mechanism for maintaining a single persistent "Now Playing" embed per guild:
+
+```python
+ACTIVE_PLAYERS = {}  # guild_id (str) -> discord.Message or None
+```
+
+- **Keys** are guild IDs cast to strings (e.g. `"123456789012345678"`).
+- **Values** are either a `discord.Message` object (the live embed) or `None` (no active embed).
+- When a new track starts, the handler tries to edit the stored message rather than sending a new one — this prevents embed spam in the voice channel.
+- The registry is cleaned up in two places: the `on_wavelink_track_end` handler (natural queue end) and the `/stop` command (manual stop), both of which delete the message and reset the value to `None`.
+
+## Presence Sync
+
+The bot keeps its Discord status in sync with the currently playing track using `nextcord.ActivityType.listening`:
+
+```python
+await bot.change_presence(
+    activity=nextcord.Activity(
+        type=nextcord.ActivityType.listening,
+        name=f"{track.title} by {track.author} [{format_time(track.length)}]",
+        timestamps={"start": int(time.time()), "end": int(time.time() + (track.length // 1000))}
+    )
+)
+```
+
+- The `name` field combines the track title, artist, and formatted duration so users can see what's playing at a glance from the member list.
+- The `timestamps` dict drives Discord's live elapsed-time display. `start` is the Unix timestamp at the moment the track begins; `end` is `start + track length in seconds`.
+- The bot computes a `presence_url` by checking whether `track.uri` belongs to YouTube (`youtube.com` / `youtu.be`) or Twitch (`twitch.tv`), falling back to `https://www.youtube.com` for any other domain (e.g. SoundCloud, direct HTTP streams). This value is available for future use but is not passed as a field in the `Activity` constructor above.
+- When the queue ends or `/stop` is called, presence is cleared with `bot.change_presence(activity=None)`.
+
+## Audio Sources
+
+Lavalink's audio source support is configured entirely in `application.yml`. The bot ships with three sources enabled:
+
+| Source | Configuration | Use Case |
+| --- | --- | --- |
+| **YouTube** | `dev.lavalink.youtube:youtube-plugin:1.18.1` | Search queries, direct video IDs, and playlists |
+| **SoundCloud** | Built-in (`soundcloud: true`, `scSearch: true`) | SoundCloud track URLs and search |
+| **HTTP** | Built-in (`http: true`) | Direct `.mp3` / audio URLs, 24/7 radio streams |
+
+YouTube support is provided by the community plugin rather than Lavalink's built-in source (which is disabled: `youtube: false`). The plugin configuration lives under `plugins.youtube` in `application.yml` and enables search, direct video IDs, and playlist loading.
+
+<Note>
+  Lavalink handles audio decoding and FFmpeg internally inside its Java process. You do **not** need to install FFmpeg on the machine running the Python bot — only on the host running the Lavalink Docker container, where it is bundled automatically.
+</Note>
+
+<CardGroup cols={2}>
+  <Card title="Queue View" icon="list" href="/architecture/queue-view">
+    How the paginated Discord UI for browsing the queue is built and secured.
+  </Card>
+
+  <Card title="Lavalink Setup" icon="server" href="/guides/lavalink-setup">
+    Step-by-step guide to running Lavalink with Docker Compose.
+  </Card>
+
+  <Card title="Playback Commands" icon="play" href="/commands/playback">
+    Reference for /play, /skip, /pause, /resume, /stop, and /nowplaying.
+  </Card>
+
+  <Card title="Configuration" icon="gear" href="/configuration">
+    All configurable values in application.yml and .env explained.
+  </Card>
+</CardGroup>

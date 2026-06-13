@@ -1,0 +1,42 @@
+---
+title: "Local documentation workflow"
+sidebarTitle: "Local development"
+description: "Use the repository npm scripts to preview, validate, and check links for the Mintlify docs site on your machine."
+icon: "terminal"
+---
+
+You can preview and validate the docs site locally with the npm scripts in the project root.
+
+## Use the docs scripts
+
+From the repository root, run these commands:
+
+```bash
+npm run docs:dev
+```
+
+This starts the Mintlify preview server for the docs site.
+
+```bash
+npm run docs:validate
+```
+
+This validates the documentation build and catches structural problems.
+
+```bash
+npm run docs:links
+```
+
+This checks internal links and helps you catch broken page references before you publish.
+
+## Recommended workflow
+
+1. Run `npm run docs:dev` to preview changes in your browser.
+2. Run `npm run docs:validate` before you commit documentation updates.
+3. Run `npm run docs:links` when you add or rename pages to confirm the navigation still resolves.
+
+## What to remember
+
+- Keep the docs workflow in the repository root so contributors use the same commands.
+- Use the preview server when you are adjusting text, navigation, or page structure.
+- Use validation and link checks before you open a pull request.
