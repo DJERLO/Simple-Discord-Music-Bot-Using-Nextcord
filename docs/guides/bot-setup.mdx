@@ -1,0 +1,135 @@
+---
+title: "Register and Configure Your Discord Bot Application"
+sidebarTitle: "Bot Setup"
+description: "Create a Discord application, configure the required gateway intents, generate an invite URL, and run the bot against your Lavalink node."
+icon: "discord"
+---
+
+Before the bot can join a voice channel and play music, you need a registered Discord application with a bot token, the correct gateway intents enabled, and an invite link scoped to the right permissions. This guide walks through each step in the Discord Developer Portal and then shows exactly what happens when `bot.py` starts up.
+
+<Warning>
+  Your bot token is equivalent to a password. **Never share it, commit it to version control, or paste it in a public channel.** Store it exclusively in a `.env` file that is listed in `.gitignore`. If a token is ever exposed, immediately regenerate it in the Developer Portal.
+</Warning>
+
+## Creating a Discord Application
+
+<Steps>
+  <Step title="Open the Developer Portal">
+    Navigate to [https://discord.com/developers/applications](https://discord.com/developers/applications) and sign in with your Discord account.
+  </Step>
+  <Step title="Create a new application">
+    Click **New Application** in the top-right corner. Give it a name — this becomes the default bot username — then click **Create**.
+  </Step>
+  <Step title="Add a bot user">
+    In the left sidebar, open the **Bot** tab. Click **Add Bot** and confirm. Discord creates a bot user attached to your application.
+  </Step>
+  <Step title="Copy your bot token">
+    Under the **Token** section, click **Reset Token**, confirm the action, then copy the token that appears. This is your `BOT_TOKEN`.
+
+    Paste it into a `.env` file in the project root:
+
+    ```bash .env
+    BOT_TOKEN=your_token_here
+    ```
+
+    The bot loads this value at startup via `python-dotenv`:
+
+    ```python bot.py
+    load_dotenv()
+    bot_token = os.getenv('BOT_TOKEN')
+    ```
+  </Step>
+  <Step title="Enable Message Content Intent">
+    Still on the **Bot** tab, scroll down to **Privileged Gateway Intents**. Enable **Message Content Intent**.
+
+    The bot code explicitly requests this intent:
+
+    ```python bot.py
+    intents = nextcord.Intents.default()
+    intents.message_content = True  # Enables the message content intent
+    ```
+
+    Without this toggle enabled in the portal, Nextcord will not receive message content events even if the intent is declared in code.
+  </Step>
+</Steps>
+
+## Setting Bot Permissions
+
+When inviting the bot to a server you must grant it the permissions it needs to function. The table below lists every required permission and why it is needed.
+
+| Permission | Category | Reason |
+| --- | --- | --- |
+| Connect | Voice | Join voice channels to stream audio |
+| Speak | Voice | Transmit audio through the voice connection |
+| Send Messages | Text | Post now-playing embeds and command responses |
+| Embed Links | Text | Render rich embeds with artwork and track details |
+| Read Message History | Text | Allow the bot to edit its own persistent player message |
+
+## Generating an Invite URL
+
+<Steps>
+  <Step title="Open the OAuth2 URL Generator">
+    In the Developer Portal, navigate to **OAuth2 → URL Generator** in the left sidebar.
+  </Step>
+  <Step title="Select scopes">
+    Under **Scopes**, check both:
+
+    - `bot`
+    - `applications.commands`
+
+    The `applications.commands` scope is required for Discord to register and display the slash commands that the bot syncs via `bot.sync_application_commands()`.
+  </Step>
+  <Step title="Select bot permissions">
+    The **Bot Permissions** panel appears once `bot` is checked. Enable:
+
+    - Connect
+    - Speak
+    - Send Messages
+    - Embed Links
+    - Read Message History
+  </Step>
+  <Step title="Copy and open the generated URL">
+    Copy the URL at the bottom of the page, paste it into a browser, select the server you want to invite the bot to, and click **Authorise**.
+  </Step>
+</Steps>
+
+<Tip>
+  Create a dedicated Discord server purely for development and testing. This gives you a safe environment to invite the bot, trigger commands, and observe its behaviour without affecting a live community server.
+</Tip>
+
+## Running the Bot
+
+With Lavalink running (see [Lavalink Setup](/guides/lavalink-setup)) and the `.env` file in place, start the bot:
+
+```bash
+python bot.py
+```
+
+### What happens at startup
+
+The `on_ready` event fires once the bot has authenticated with Discord's gateway. It performs three tasks in sequence:
+
+```python bot.py
+@bot.event
+async def on_ready():
+    """Connect to Lavalink node (defined in application.yml) when the bot is ready"""
+    node: wavelink.Node = wavelink.Node(uri="http://127.0.0.1:2333", password="youshallnotpass")
+    await wavelink.Pool.connect(nodes=[node], client=bot)
+    await bot.sync_application_commands()
+```
+
+1. **Connects to Lavalink** — creates a `wavelink.Node` pointed at `http://127.0.0.1:2333` using the password defined in `application.yml` (`youshallnotpass`).
+2. **Registers the node pool** — `wavelink.Pool.connect` makes the node available for all subsequent voice connections.
+3. **Syncs slash commands** — `bot.sync_application_commands()` registers all `@bot.slash_command` decorators with Discord's API.
+
+<Note>
+  Global slash command registration can take up to an hour to propagate to all servers. During development, commands usually appear much faster — typically within a few minutes of the bot connecting.
+</Note>
+
+## Configuration Reference
+
+| Value | Where | Purpose |
+| --- | --- | --- |
+| `BOT_TOKEN` | `.env` | Authenticates the bot with Discord's gateway |
+| `http://127.0.0.1:2333` | `bot.pyon_ready` | Lavalink node URI |
+| `youshallnotpass` | `bot.pyon_ready` | Lavalink node password (must match `application.yml`) |

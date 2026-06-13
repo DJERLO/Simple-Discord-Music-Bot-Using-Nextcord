@@ -1,0 +1,30 @@
+---
+title: "Slash Commands"
+description: "A comprehensive list of all available music commands."
+icon: "terminal"
+---
+
+# Command overview
+
+You can use 18 slash commands in this bot. The command set is split between the main music cog, the DJ controls, and the utility helpers.
+
+## Command groups
+
+| Group | Commands |
+| --- | --- |
+| Music | `/play`, `/queue`, `/nowplaying`, `/join`, `/voteskip` |
+| Queue and playback | `/shuffle`, `/clearqueue`, `/previous`, `/remove` |
+| DJ controls | `/skip`, `/pause`, `/resume`, `/stop`, `/volume`, `/loop`, `/autoplay` |
+| Utility | `/ping`, `/help` |
+
+This set currently contains 18 slash commands in total: 5 general music controls, 4 queue-management helpers, 7 DJ-only controls, and 2 utility commands.
+
+## What to read next
+
+- Use [Playback](/commands/playback) for the detailed command walkthrough.
+- Use [Queue](/commands/queue) for pagination, shuffle, and clear-queue behavior.
+- Use [Utility](/commands/utility) for the help and diagnostics commands.
+
+<Note>
+  DJ-only commands require the DJ role or Administrator permission. The shared permission decorator in `core/decorators.py` enforces this check.
+</Note>

@@ -1,0 +1,38 @@
+---
+title: "Modular Bot Layout"
+sidebarTitle: "Modules"
+description: "Understand how the bot boots from bot.py and delegates playback, event handling, and UI work to its modular cogs."
+icon: "file-code"
+---
+
+You now start the bot from `bot.py`, but the runtime behavior is split across small, focused modules in `cogs/`, `core/`, and `ui/`. This structure makes it easier for you to extend one feature without touching unrelated playback logic.
+
+## What loads at startup
+
+The bootstrap in `bot.py` now performs three simple jobs:
+
+1. Creates the Nextcord bot instance and loads the environment variables.
+2. Connects to the Lavalink node during `on_ready`.
+3. Loads the extension modules from `cogs/`.
+
+The current extension set is:
+
+- `cogs.music_commands` for slash commands, queue management, and playback controls
+- `cogs.events` for voice-state cleanup, track lifecycle updates, and presence sync
+
+## What each module owns
+
+| Area | Location | Responsibility |
+| --- | --- | --- |
+| Music commands | `cogs/music_commands.py` | `/play`, `/queue`, `/pause`, `/resume`, and related playback actions |
+| Audio lifecycle | `cogs/events.py` | Voice-state cleanup, track-start and track-end handlers, and persistent embeds |
+| Permissions | `core/decorators.py` | DJ checks and command access restrictions |
+| UI helpers | `ui/embeds.py`, `ui/views.py` | Rich embeds, queue views, and interactive components |
+
+## Why this layout helps you
+
+You can now update a single command group or a single event listener without rebuilding the whole bot. If you add a new feature, place it in its own cog, wire it into `bot.py`, and keep the rest of the architecture untouched.
+
+<Info>
+  The modular layout is the foundation for future additions such as **Moderation**, **Utility**, or **Admin** cogs. Keep each feature isolated so the command set stays easy to maintain.
+</Info>

@@ -1,0 +1,143 @@
+---
+title: "Utility Commands: Now Playing, Ping, and Help Reference"
+sidebarTitle: "Utility"
+description: "Inspect the current track with a rich embed, check WebSocket latency in milliseconds, and list every available command in one place."
+icon: "tools"
+---
+
+The utility commands give you quick diagnostics and quick references without cluttering the channel. You can inspect the active track, check the bot's latency, or open the command list at any time. These commands reuse the shared helper functions in `ui/embeds.py`, which keeps the modular UI consistent across the bot.
+
+---
+
+## `/nowplaying`
+
+<Info>
+  Sends a detailed embed for the track currently being played, including artist, duration, artwork, and who requested it.
+</Info>
+
+`/nowplaying` reads the active track from `vc.current` and builds a rich embed using the same metadata and helper functions used by the automatic Now Playing message. Because the embed is sent ephemerally, each user can request it independently without flooding the channel.
+
+**Behavior**
+
+- Checks that `vc` is not `None` and that `vc.playing` is `True`; sends an error and returns early otherwise.
+- Reads the current track from `vc.current`.
+- Builds a `nextcord.Embed` with:
+  - **Title:** `💿 Currently Playing`
+  - **Description:** a clickable hyperlink formatted as `[track.title](track.uri)`
+  - **Color:** blue (`nextcord.Color.blue()`)
+  - **Field "Artist":** `track.author` (inline)
+  - **Field "Duration":** `format_time(track.length)` in M:SS format (inline)
+  - **Thumbnail:** resolved by `get_track_artwork(track)` (set only if a URL is found)
+  - **Footer:** `"Requested by {requester}"` with the requester's avatar, sourced from `track.extras`
+- Sends the embed as an ephemeral message.
+
+**Error responses**
+
+| Situation | Response |
+| --- | --- |
+| Bot is not playing anything | `"Nothing is currently playing."` (ephemeral) |
+
+---
+
+## `/ping`
+
+<Info>
+  Reports the bot's current WebSocket latency in milliseconds.
+</Info>
+
+`/ping` reads `bot.latency`, which Nextcord exposes as the round-trip time of the WebSocket heartbeat in **seconds**. The command multiplies it by 1000 and rounds to the nearest integer to produce a millisecond value that is easier to read.
+
+**Behavior**
+
+- Reads `bot.latency` (a float, measured in seconds).
+- Computes `latency_ms = round(bot.latency * 1000)`.
+- Sends `"Pong! Latency: {latency_ms}ms"` ephemerally.
+
+<Note>
+  WebSocket latency reflects the heartbeat connection between the bot process and Discord's gateway, not audio stream latency from Lavalink. High values here typically indicate network issues between the host machine and Discord.
+</Note>
+
+---
+
+## `/help`
+
+<Info>
+  Sends a formatted list of every available slash command with a one-line description of each.
+</Info>
+
+`/help` hard-codes the list of all registered slash commands into a single ephemeral text message. It covers every command documented across the Command Reference, making it a useful quick-reference for server members who are unfamiliar with the bot.
+
+**Behavior**
+
+- Builds a multi-line string listing all available commands and their purposes.
+- Sends the string as an ephemeral message.
+
+**Commands listed**
+
+| Command | Description shown |
+| --- | --- |
+| `/play [song name or URL]` | Play a song or add it to the queue |
+| `/skip` | Skip the currently playing song |
+| `/pause` | Pause the currently playing song |
+| `/resume` | Resume the currently paused song |
+| `/shuffle` | Shuffle the current music queue |
+| `/nowplaying` | Show details of the currently playing song |
+| `/stop` | Stop playback and clear the queue |
+| `/queue` | Show the current music queue |
+| `/clearqueue` | Clear the current music queue |
+| `/ping` | Check the bot's latency |
+| `/help` | Show the help message |
+
+---
+
+## Helper Functions
+
+Two helper functions in `ui/embeds.py` are shared by multiple commands. They are not slash commands themselves, but they explain how the bot renders track metadata and artwork across the modular UI.
+
+### `format_time`
+
+Converts a duration in milliseconds to a human-readable `M:SS` string. It is used by `/play`, `/nowplaying`, and the `on_wavelink_track_start` event to format track lengths consistently.
+
+```python
+def format_time(ms: int) -> str:
+    """Formats milliseconds into M:SS."""
+    seconds = int(ms // 1000)
+    minutes, seconds = divmod(seconds, 60)
+    return f"{minutes}:{seconds:02d}"
+```
+
+**Examples**
+
+| Input (ms) | Output |
+| --- | --- |
+| `180000` | `"3:00"` |
+| `3661000` | `"61:01"` |
+| `90500` | `"1:30"` |
+
+<Note>
+  Hours are not broken out separately — a three-hour track would display as `"180:00"`. The format keeps things simple for typical song lengths.
+</Note>
+
+### `get_track_artwork`
+
+Resolves the best available artwork URL for a `wavelink.Playable` track. It is used by `/play` and `/nowplaying`, and by the `on_wavelink_track_start` event handler.
+
+```python
+def get_track_artwork(track: wavelink.Playable) -> str:
+    """Helper to retrieve the best available artwork for a track."""
+    artwork = getattr(track, 'artwork', None) or getattr(track, 'thumbnail', None)
+    if not artwork and 'youtube' in getattr(track, 'source', ''):
+        return f"https://i.ytimg.com/vi/{track.identifier}/hqdefault.jpg"
+    return artwork
+```
+
+**Resolution order**
+
+1. `track.artwork` — the primary artwork attribute provided by Wavelink.
+2. `track.thumbnail` — a fallback attribute present on some track types.
+3. If neither is set and `track.source` contains `'youtube'`, constructs a YouTube thumbnail URL: `https://i.ytimg.com/vi/{track.identifier}/hqdefault.jpg`.
+4. Returns `None` if no artwork can be found (callers guard against this before calling `set_thumbnail` or `set_image`).
+
+<Tip>
+  The YouTube fallback uses the `hqdefault` image size, which is 480×360 pixels — large enough for Discord embeds without exceeding file-size limits.
+</Tip>

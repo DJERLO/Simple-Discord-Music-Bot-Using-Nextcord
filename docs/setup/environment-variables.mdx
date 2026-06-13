@@ -1,0 +1,30 @@
+---
+title: "Environment Variables"
+sidebarTitle: "Environment Variables"
+description: "Review every environment variable the bot uses, including required values for Discord and Lavalink, and the defaults the code applies when a value is missing."
+icon: "key"
+---
+
+You keep the bot's secrets and connection settings in a `.env` file at the project root. The bot loads that file with `python-dotenv`, and the modular startup path in `bot.py` reads the values during startup.
+
+## Variable reference
+
+| Variable | Required | Default | Purpose |
+| --- | --- | --- | --- |
+| `BOT_TOKEN` | Yes | None | Authenticates the Discord bot with the gateway and slash command API. |
+| `LAVALINK_URI` | No | `http://127.0.0.1:2333` | Points the bot at the Lavalink node it should connect to. |
+| `LAVALINK_PASSWORD` | No | `youshallnotpass` | Matches the password configured in `application.yml` for the Lavalink server. |
+
+## Recommended `.env` example
+
+```env
+BOT_TOKEN=your_discord_bot_token_here
+LAVALINK_URI=http://127.0.0.1:2333
+LAVALINK_PASSWORD=youshallnotpass
+```
+
+## What to remember
+
+- Keep `.env` out of version control.
+- Update `LAVALINK_URI` and `LAVALINK_PASSWORD` together whenever you change the Lavalink host or password.
+- The default values are safe for the provided Docker setup, but you should override them when you deploy the bot to another machine.

@@ -1,0 +1,196 @@
+---
+title: "QueueView: Paginated Discord UI for Queue Browsing"
+sidebarTitle: "Queue View"
+description: "Learn how QueueView, a nextcord.ui.View subclass, renders a paginated embed and restricts pagination to the original command invoker."
+icon: "toolbox"
+---
+
+When a user runs `/queue`, the bot needs to display an arbitrary number of queued tracks in a readable, interactive format. `QueueView` — defined in `views.py` — solves this with a paginated Discord embed that the invoker can page through using buttons, while preventing other users from hijacking the navigation controls.
+
+## Class Overview
+
+`QueueView` subclasses `nextcord.ui.View` and stores all the state needed to render and navigate the queue:
+
+```python
+class QueueView(View):
+    def __init__(self, songs, interaction_user, guild_id, per_page=10):
+        super().__init__(timeout=60)
+        self.songs = songs
+        self.per_page = per_page
+        self.page = 0
+        self.guild_id = guild_id
+        self.interaction_user = interaction_user
+        self.message = None
+        self.update_button_states()
+```
+
+The `timeout=60` passed to `super().__init__()` tells Nextcord to automatically call `on_timeout()` after 60 seconds of inactivity, graying out the buttons so users know the session has ended. `update_button_states()` runs immediately during construction so the ⬅️ Prev button starts in a disabled state on page 0.
+
+## Parameters
+
+<Accordion title="songs">
+  A list of tuples, one per queued track, in the form:
+
+  ```python
+  (url: str, title: str, artwork: str | None, duration: float)
+  ```
+
+  `duration` is in **seconds** (the `/queue` command divides Wavelink's millisecond `track.length` by 1000 before passing it to `QueueView`). The `url` and `artwork` fields are stored in the tuple but not rendered in the queue embed — they are available for future use.
+</Accordion>
+
+<Accordion title="interaction_user">
+  A `nextcord.User` (or `nextcord.Member`) — the Discord user who invoked `/queue`. Only this user's interactions with the pagination buttons will be accepted. Any other user who clicks a button receives an ephemeral error.
+</Accordion>
+
+<Accordion title="guild_id">
+  A string representation of the Discord guild (server) ID. It is stored on the view for context but is not currently used in the view's own logic.
+</Accordion>
+
+<Accordion title="per_page">
+  An integer controlling how many tracks appear on each page. Defaults to `10`. The value is used throughout `get_embed()` and `update_button_states()` to calculate page boundaries.
+</Accordion>
+
+## Methods
+
+### `get_embed() → Embed`
+
+Builds and returns a `nextcord.Embed` for the current page. The core logic slices `self.songs` to extract only the tracks that belong on the current page:
+
+```python
+start = self.page * self.per_page
+end   = start + self.per_page
+queue_slice = self.songs[start:end]
+max_pages = max(1, (len(self.songs) - 1) // self.per_page + 1)
+```
+
+The embed title follows the pattern `🎶 Music Queue (Page {page+1}/{max_pages})`, making the user's position in the list immediately clear. Each song entry in the description is formatted as:
+
+```text
+**{idx}.** {title} ({M}:{SS})
+```
+
+where `idx` is the track's absolute position in the full queue (not reset per page), and the duration is computed from raw seconds using integer division:
+
+```python
+time_str = f" ({int(duration // 60)}:{int(duration % 60):02d})"
+```
+
+The footer reads `Total Songs: {len(songs)}` so users always know the full queue length regardless of which page they are on. If the slice is empty (e.g. the page index somehow exceeds available data), the embed description is set to `*No items on this page.*` instead.
+
+### `update_button_states()`
+
+Recalculates the enabled/disabled state of both pagination buttons after every page change:
+
+```python
+def update_button_states(self):
+    max_page = max(0, (len(self.songs) - 1) // self.per_page)
+    self.prev_page.disabled = self.page <= 0
+    self.next_page.disabled = self.page >= max_page
+```
+
+- **⬅️ Prev** is disabled when `page <= 0` (already on the first page).
+- **Next ➡️** is disabled when `page >= max_page` (already on the last page).
+
+This prevents users from navigating to nonexistent pages and gives clear visual feedback at the boundaries.
+
+### `interaction_check(interaction) → bool`
+
+Acts as a gate for every button click on this view. Nextcord calls this method automatically before dispatching any component interaction:
+
+```python
+async def interaction_check(self, interaction: Interaction) -> bool:
+    if interaction.user.id != self.interaction_user.id:
+        await interaction.response.send_message(
+            "Only the user who requested the queue menu can look through pages.",
+            ephemeral=True
+        )
+        return False
+    return True
+```
+
+Returning `False` suppresses the button callback entirely and sends the caller an ephemeral (private) error message. Returning `True` allows the interaction to proceed normally.
+
+### `prev_page` Button (⬅️ Prev, Primary)
+
+Defined with `@nextcord.ui.button(label="⬅️ Prev", style=ButtonStyle.primary, row=0)`:
+
+```python
+async def prev_page(self, button: Button, interaction: Interaction):
+    self.page -= 1
+    self.update_button_states()
+    await interaction.response.edit_message(embed=self.get_embed(), view=self)
+```
+
+Decrements `self.page` by one, recalculates button states, then edits the existing message in place with the new embed and updated view. Editing rather than sending a new message keeps the interaction response clean.
+
+### `next_page` Button (Next ➡️, Primary)
+
+Defined with `@nextcord.ui.button(label="Next ➡️", style=ButtonStyle.primary, row=0)`:
+
+```python
+async def next_page(self, button: Button, interaction: Interaction):
+    self.page += 1
+    self.update_button_states()
+    await interaction.response.edit_message(embed=self.get_embed(), view=self)
+```
+
+Mirror of `prev_page` — increments `self.page` and refreshes the message.
+
+### `on_timeout()`
+
+Called automatically by Nextcord after 60 seconds without any button interaction:
+
+```python
+async def on_timeout(self):
+    for child in self.children:
+        child.disabled = True
+    if self.message:
+        try:
+            await self.message.edit(view=self)
+        except Exception:
+            pass
+```
+
+Iterating over `self.children` and setting `disabled = True` on each grays out all buttons in Discord's UI. The `try/except` block silently handles the case where the original message was deleted before the timeout fired.
+
+<Note>
+  The 60-second timeout is set at construction time via `super().__init__(timeout=60)`. Once the timeout fires, the buttons in Discord gray out visually — they cannot be re-enabled on the same view instance. Users who want to browse the queue again must re-run `/queue` to get a fresh 60-second session.
+</Note>
+
+## Integration with the `/queue` Command
+
+The `/queue` command in `bot.py` converts the Wavelink queue into the tuple format `QueueView` expects, then sends the first page as an ephemeral message:
+
+```python
+songs_list = []
+for track in vc.queue:
+    songs_list.append((track.uri, track.title, track.artwork, track.length / 1000))
+
+view = QueueView(songs_list, interaction.user, str(interaction.guild_id))
+await interaction.response.send_message(embed=view.get_embed(), view=view, ephemeral=True)
+view.message = await interaction.original_message()
+```
+
+`track.length` from Wavelink is in **milliseconds**. Dividing by `1000` converts to seconds before handing the value to `QueueView`, which then formats seconds into `M:SS` internally. The `view.message` assignment after sending is critical — it gives `on_timeout()` the message reference it needs to edit the buttons when the session expires.
+
+Because the response is `ephemeral=True`, the queue embed is only visible to the user who ran the command, which naturally complements the session-lock pattern.
+
+## Session Lock Pattern
+
+Without access control, any server member could click the ⬅️ / ➡️ buttons on another user's queue view and change the page they are reading. The `interaction_check` guard prevents this at the framework level.
+
+The pattern works because Nextcord routes every component interaction through `interaction_check` before the button callback fires:
+
+1. User A runs `/queue` → receives an ephemeral view with `interaction_user = User A`.
+2. User B somehow clicks a button (e.g. from a screenshot or a non-ephemeral context) → `interaction_check` compares `interaction.user.id` (User B) against `self.interaction_user.id` (User A), finds a mismatch, sends User B an ephemeral error, and returns `False`.
+3. The button callback is never executed — User A's page state is untouched.
+
+<Tip>
+  The default of `per_page=10` is a reasonable fit for most queues, but you can change it by passing a different value when instantiating `QueueView` in `bot.py`:
+
+  ```python
+  view = QueueView(songs_list, interaction.user, str(interaction.guild_id), per_page=5)
+  ```
+
+  Smaller values (e.g. `5`) work better if track titles tend to be long; larger values (e.g. `15`) are useful if you regularly queue albums or playlists.
+</Tip>

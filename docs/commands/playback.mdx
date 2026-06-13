@@ -1,0 +1,191 @@
+---
+title: "Playback Commands: Play, Skip, Pause, Resume, Stop"
+sidebarTitle: "Playback"
+description: "Control music playback with slash commands to play songs, skip tracks, pause and resume audio, and fully disconnect the bot when done."
+icon: "play-circle"
+---
+
+The playback commands are the core of the music experience in this bot. You can search for songs, queue playlists, jump to the previous track, remove a queued entry, and stop playback without touching the rest of the bot. Each command uses the modular `MusicCommands` cog in `cogs/music_commands.py`, so the command behavior stays isolated from the event system that manages the player UI.
+
+<Info>
+  Use the DJ-only commands only when you have the required DJ role or Administrator permission. The bot enforces this check through the shared decorator in `core/decorators.py`.
+</Info>
+
+---
+
+## `/play`
+
+<Info>
+  Searches for a song or playlist by name or URL and adds it to the queue. If nothing is currently playing, playback starts immediately.
+</Info>
+
+The `/play` command is the primary way to get music going. It accepts either a plain search term (e.g. `lofi hip hop`) or a direct URL. The bot defers its response first so Discord doesn't time out during the search, then joins your voice channel (or moves to it if already connected elsewhere) before queuing the result.
+
+<ParamField query="song" type="string" required>
+  The song name or URL to search for and play. Accepts free-text queries or direct links to supported sources (YouTube, SoundCloud, etc.).
+</ParamField>
+
+**Behavior**
+
+- Defers the interaction response immediately to prevent timeouts during search.
+- Verifies the invoking user is in a voice channel; aborts with an error otherwise.
+- Joins the user's voice channel if the bot is not already connected, or moves to it if connected elsewhere.
+- Calls `wavelink.Playable.search(song)` to resolve tracks.
+- Stores the requester's display name and avatar URL in `track.extras` for attribution in embeds.
+- If the result is a `wavelink.Playlist`, all tracks are added to the queue and a confirmation embed shows the playlist name and total track count.
+- If the result is a single track, it is added to the queue and the embed shows the title, author, and formatted duration.
+- The confirmation embed uses an orange color, displays the track artwork as a full-width image (`embed.set_image`), and includes a footer crediting the requester.
+- The confirmation message is ephemeral and auto-deletes after **10 seconds**.
+- If the bot is not already playing when the track is added, playback begins immediately via `vc.play(vc.queue.get())`.
+
+**Error responses**
+
+| Situation | Response |
+| --- | --- |
+| User is not in a voice channel | `"You must be in a voice channel."` (ephemeral, deletes after 5 s) |
+| Search returns no results | `"No results found."` (ephemeral, deletes after 5 s) |
+
+---
+
+## `/previous`
+
+<Info>
+  This command is DJ-only. It restores the previous track from the player history and is useful when you want to replay the last song without searching again.
+</Info>
+
+The `/previous` command uses the `last_played_track` property on `WavelinkPlayer`. That property reads the most recent track in the player's history and returns the one that was playing immediately before the current song. You can think of it as a quick "go back one song" shortcut for the current session.
+
+**What to expect**
+
+- The command checks that you are in the same voice channel as the bot.
+- It reads `vc.last_played_track` from the current player session.
+- It puts the current track back at the front of the queue, then starts the previous track again.
+
+**When it helps**
+
+- You want to replay the last song after an accidental skip.
+- You want to return to the previous item without retyping a search term.
+
+---
+
+## `/remove`
+
+<Info>
+  This command is DJ-only. It removes one queued track by its position number, whether the entry lives in the regular queue or the autoplay queue.
+</Info>
+
+Use `/remove <position>` when you want to clean up a specific song from the upcoming list. The command accepts a 1-based position number and works for both the normal queue and the autoplay recommendations queue.
+
+**What to expect**
+
+- The command validates the requested position before making any change.
+- It removes the song from the regular queue or the autoplay queue, depending on where the track lives.
+- It updates the persistent player message so the queue display stays accurate.
+
+**Example**
+
+- Run `/remove 2` to remove the second track in the current queue.
+- If the queue contains autoplay recommendations, the position count includes both the regular queue and the autoplay queue.
+
+---
+
+## `/skip`
+
+<Info>
+  Skips the currently playing or paused song and advances to the next track in the queue.
+</Info>
+
+`/skip` calls `vc.skip()` on the Wavelink player. It works whether the current track is actively playing or has been paused — both states are checked. After the skip the `on_wavelink_track_end` event fires automatically to advance the queue.
+
+**Behavior**
+
+- Checks that `vc.playing` **or** `vc.paused` is `True`.
+- Calls `vc.skip()` to end the current track.
+- Sends `"Skipped the current song."` ephemerally on success.
+
+**Error responses**
+
+| Situation | Response |
+| --- | --- |
+| Nothing is playing or paused | `"Not playing anything to skip."` |
+
+<Note>
+  The `/skip` success confirmation is sent as a non-ephemeral message when nothing is playing. For consistency, consider always running this command when a track is active.
+</Note>
+
+---
+
+## `/pause`
+
+<Info>
+  Pauses the currently playing track without clearing the queue or disconnecting the bot.
+</Info>
+
+`/pause` calls `vc.pause(True)` on the Wavelink player. The track position is preserved; use `/resume` to continue from the same point.
+
+**Behavior**
+
+- Verifies the bot is connected to a voice channel (`vc` is not `None`).
+- Verifies that `vc.playing` is `True`.
+- Calls `vc.pause(True)` to pause the audio stream.
+- Sends `"Playback paused!"` ephemerally on success.
+
+**Error responses**
+
+| Situation | Response |
+| --- | --- |
+| Bot is not in a voice channel | `"I'm not in a voice channel."` (ephemeral) |
+| Nothing is currently playing | `"Nothing is currently playing."` (ephemeral) |
+
+---
+
+## `/resume`
+
+<Info>
+  Resumes a paused track from the exact position it was paused at.
+</Info>
+
+`/resume` calls `vc.pause(False)`, which Wavelink uses as the toggle to un-pause the player. It only works when the player is actively paused; if playback is already running, the command returns an error instead of silently succeeding.
+
+**Behavior**
+
+- Verifies the bot is connected to a voice channel (`vc` is not `None`).
+- Verifies that `vc.paused` is `True`.
+- Calls `vc.pause(False)` to resume the audio stream.
+- Sends `"Playback resumed!"` ephemerally on success.
+
+**Error responses**
+
+| Situation | Response |
+| --- | --- |
+| Bot is not in a voice channel | `"I'm not in a voice channel."` (ephemeral) |
+| Player is not currently paused | `"I'm not paused right now."` (ephemeral) |
+
+---
+
+## `/stop`
+
+<Warning>
+  This command clears the entire queue, deletes the Now Playing embed, and disconnects the bot from the voice channel. It cannot be undone.
+</Warning>
+
+`/stop` is a full teardown command. It clears queued tracks, removes the persistent Now Playing message from the channel, resets the bot's Discord presence, and disconnects from the voice channel.
+
+**Behavior**
+
+- Verifies the bot is connected to a voice channel; aborts with an error otherwise.
+- Calls `vc.queue.clear()` to remove all upcoming tracks.
+- Looks up the guild's active Now Playing message in the `ACTIVE_PLAYERS` dictionary. If one exists, it is deleted from the channel and the dictionary entry is set to `None`.
+- Calls `vc.disconnect()` to leave the voice channel.
+- Resets the bot's Discord presence to `None` via `bot.change_presence(activity=None)`.
+- Sends `"Stopped playback and disconnected"` ephemerally on success.
+
+**Error responses**
+
+| Situation | Response |
+| --- | --- |
+| Bot is not connected to a voice channel | `"I'm not connected to any voice channel."` (ephemeral) |
+
+<Tip>
+  If you only want to clear upcoming tracks without disconnecting the bot, use `/clearqueue` instead.
+</Tip>

@@ -22,3 +22,4 @@ cookies.txt
 reports.db
 bin/ffmpeg/
 *.exe
+node_modules

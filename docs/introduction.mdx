@@ -1,0 +1,65 @@
+---
+title: "Simple Discord Music Bot: Lavalink-Powered Audio for Discord"
+sidebarTitle: "Introduction"
+description: "A Python Discord music bot built with Nextcord and Wavelink, using Lavalink for high-quality audio streaming, slash commands, and playlist support."
+icon: "address-book"
+mode: "default"
+---
+
+Simple Discord Music Bot is a high-performance, open-source music bot for Discord servers. Built in Python using Nextcord as the Discord API wrapper and Wavelink as the async Lavalink client, it offloads all audio decoding and streaming work to a dedicated Lavalink Java server — delivering crystal-clear sound with low resource overhead on the bot process itself. The project was inspired by a similar discord.py implementation and rewritten from the ground up for Nextcord, and is released under the MIT license.
+
+## What the Bot Does
+
+When a user runs `/play` in a Discord server, the bot searches YouTube or SoundCloud for the requested song, adds it to a per-guild queue, and streams the audio through a Lavalink node into the voice channel. As each track plays, the bot posts a live "Now Playing" rich embed and updates its own Discord presence with the track title, artist, and a live timestamp. When the queue is exhausted the bot cleans up its embed, resets its presence, and disconnects — no manual cleanup needed.
+
+## Key Features
+
+- **Lavalink audio backend** — audio decoding and streaming are handled by a dedicated Java process, keeping the Python bot lightweight and stable
+- **18 slash commands** — `/play`, `/join`, `/queue`, `/nowplaying`, `/ping`, `/help`, `/voteskip`, `/skip`, `/pause`, `/resume`, `/stop`, `/volume`, `/loop`, `/autoplay`, `/clearqueue`, `/shuffle`, `/previous`, and `/remove`
+- **YouTube and SoundCloud search** — search by name or paste a direct URL; both video and playlist URLs are supported
+- **Playlist support** — adding a playlist URL enqueues all tracks at once and reports the playlist name and track count
+- **Paginated queue browser** — the `/queue` command opens an interactive, session-locked pagination view so users can browse long queues without flooding the channel
+- **Live Now Playing embeds** — a persistent embed in the voice channel updates automatically when each new track starts and deletes itself when the queue ends
+- **Automated presence sync** — the bot's Discord status reflects the currently playing track, including live start/end timestamps
+
+## How the Pieces Fit Together
+
+```text
+Discord User  →  Nextcord (bot.py)  →  Wavelink  →  Lavalink Node  →  YouTube / SoundCloud
+                      ↑                                    ↓
+                  Slash Commands                     Decoded Audio
+                      ↑                                    ↓
+                Discord Channel  ←─────────────── Voice Channel Stream
+```
+
+You issue a slash command in Discord. Nextcord receives it in the modular startup path and delegates the playback logic to `cogs/music_commands.py`, while `cogs/events.py` manages the live player UI and queue lifecycle. Wavelink forwards the request to the Lavalink node (a Java process running inside Docker). Lavalink fetches the audio from the source, decodes it, and streams it directly into the Discord voice channel — the Python process never touches raw audio data.
+
+## Technology Stack
+
+| Component | Role |
+| --- | --- |
+| **Nextcord** | Discord API wrapper; handles slash commands, embeds, voice protocol, and gateway events |
+| **Wavelink** | Async Python client for Lavalink; manages nodes, queues, and playback events |
+| **Lavalink** | Java audio server; handles source fetching, decoding, and low-latency streaming |
+| **Docker** | Runs the Lavalink server in an isolated container via `docker-compose` |
+| **python-dotenv** | Loads the `BOT_TOKEN` from a `.env` file, keeping secrets out of source code |
+
+## Explore the Docs
+
+<CardGroup cols={2}>
+  <Card title="Quickstart" icon="rocket" href="/quickstart">
+    Get the bot running in minutes — clone, configure, and play your first song.
+  </Card>
+
+  <Card title="Configuration" icon="gear" href="/configuration">
+    Customize environment variables, Lavalink connection settings, and bot permissions.
+  </Card>
+
+  <Card title="Lavalink Setup" icon="server" href="/guides/lavalink-setup">
+    Deep-dive into running and tuning the Lavalink Docker node.
+  </Card>
+
+  <Card title="Playback Commands" icon="music" href="/commands/playback">
+    Full reference for every slash command the bot exposes.
+  </Card>
+</CardGroup>

@@ -5,8 +5,8 @@
 [![Documentation](https://img.shields.io/badge/docs-Mintlify-24b47e?style=flat&logo=bookstack&logoColor=white)](https://mintlify.wiki/DJERLO/Simple-Discord-Music-Bot-Using-Nextcord/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
-A high-performance Discord music bot built with [Nextcord](https://github.com/nextcord/nextcord) and [Wavelink](https://github.com/PythonistaGuild/Wavelink). 
-This bot leverages **Lavalink** for industry-standard audio processing, ensuring stability and low resource usage.
+A high-performance, modular Discord music bot built with [Nextcord](https://github.com/nextcord/nextcord) and [Wavelink](https://github.com/PythonistaGuild/Wavelink). 
+This bot leverages **Lavalink** for industry-standard audio processing and features a modern, interactive UI designed for the best user experience.
 
 This project was heavily inspired by [CreepyD](https://www.youtube.com/watch?v=U5CUkxUh2CQ), who made a similar bot using [discord.py](https://github.com/Rapptz/discord.py) in Python.
 For my version, I used **Nextcord** as the main Discord API wrapper.
@@ -15,10 +15,21 @@ For my version, I used **Nextcord** as the main Discord API wrapper.
 
 ## Features
 
+* **Modular Architecture:** Cleanly organized into Cogs and Core logic for easy feature expansion.
 * **Lavalink Powered:** Offloads audio decoding and streaming to a dedicated Java node for crystal clear audio.
-* **Dynamic UI:** Displays interactive "Now Playing" rich embeds that automatically clean up when playback stops.
+* **Advanced UI Components:** Uses Nextcord's persistent views for interactive buttons and menus.
 * **Paginated Navigation:** View deep music tracks using an organized, session-locked pagination view.
 * **Automated Presence:** Synchronizes the bot's status with the current track, including live timestamps.
+* **Robust Testing:** Includes a comprehensive suite of automated tests to ensure stability.
+
+---
+
+## 📂 Project Structure
+
+* **`cogs/`** — Slash command definitions (`music_commands.py`) and audio event listeners (`events.py`).
+* **`core/`** — Internal logic, including permission decorators and custom player extensions.
+* **`ui/`** — Interface design, containing rich embeds (`embeds.py`) and interactive views (`views.py`).
+* **`tests/`** — Comprehensive `pytest` suite for playback logic and queue management.
 
 ---
 
@@ -50,10 +61,15 @@ cd Simple-Discord-Music-Bot-Using-Nextcord
 
 ### 2. Configure Environment Variables
 
-Create a file named .env in the root directory of the project and add your secret token as shown below:
+Create a `.env` file in the root directory to store your credentials. The bot uses these to authenticate with Discord and connect to the Lavalink node:
 
-```bash
-BOT_TOKEN=your_discord_bot_token_here
+```env
+# Discord Bot Authentication
+BOT_TOKEN=your_unique_bot_token_here
+
+# Lavalink Connection (Defaults)
+LAVALINK_URI=http://127.0.0.1:2333
+LAVALINK_PASSWORD=youshallnotpass
 ```
 > [!WARNING]
 > Never commit the .env file to version control. It is already listed in .gitignore for your protection — do not remove it from that list.
@@ -141,10 +157,10 @@ You should see no connection errors in the terminal output if Lavalink is health
 
 We maintain high code quality using `pytest`. We've implemented a "watchdog" system to ensure that new changes don't break the bot's core functionality.
 
-### Running Tests
-Run the test suite once:
+### Running the Verification Matrix
+Execute the full test suite natively from the project root:
 ```bash
-pytest
+pytest tests/ -v
 ```
 
 ### Development Watchdog
@@ -162,21 +178,38 @@ This workflow ensures that:
 
 ---
 
-## Slash Commands
+## 🎛️ Slash Commands
 
-* `/play <song>` — Searches and plays a song or adds it to the queue.
-* `/nowplaying` — Displays detailed information about the current track.
-* `/skip` — Skips the track currently active in the channel.
-* `/pause` — Pauses current audio playback.
-* `/resume` — Resumes paused music tracking.
-* `/queue` — Launches a paginated interactive embed panel to browse the active song queue.
-* `/shuffle` — Shuffles the current music queue.
-* `/clearqueue` — Clears all songs from the current queue.
-* `/stop` — Safely halts active audio, clears internal arrays, and cleanly drops voice server gateway connections.
-* `/ping` — Checks the bot's latency.
-* `/help` — Shows available commands and usage.
+### General Commands
+* `/join` — Invites the bot into your current voice channel.
+* `/play <song_name_or_url>` — Searches and plays a track or adds it to the queue.
+* `/queue` — Launches an interactive, paginated panel to browse upcoming tracks.
+* `/nowplaying` — Displays an interactive dashboard panel for the current track.
+* `/shuffle` — Shuffles the positions of all tracks currently in the queue.
+* `/voteskip` — Initiates a listener vote to skip (requires a 50% majority to pass).
+* `/ping` — Measures the bot's websocket and API gateway latency.
+* `/help` — Dispatches an ephemeral reference guide of all available commands.
+
+### 🛡️ DJ Only Commands
+* `/volume <1-100>` — Adjusts the player's audio output level. *(DJ Only)*
+* `/loop <normal|loop|loop_all>` — Toggles repeat playback for the currently active track or loop_all tracks in the queue. *(DJ Only)*
+* `/autoplay <mode>` — Configures smart-mix autoplay for continuous streams. *(DJ Only)*
+* `/skip` — Instantly bypasses the current song without requiring a vote. *(DJ Only)*
+* `/previous` — Play the previous song in the history. *(DJ Only)*
+* `/pause` — Freezes audio streaming on the active Lavalink node. *(DJ Only)*
+* `/resume` — Unpauses the active track to continue audio playback. *(DJ Only)*
+* `/stop` — Stops the active audio, clears the queue, and leaves the channel. *(DJ Only)*
+* `/clearqueue` — Empties all pending tracks from the queue array. *(DJ Only)*
+* `/remove <position>` — Extracts a specific track from the queue by its index. *(DJ Only)*
 
 ---
+> [!IMPORTANT]
+> **Supported Audio Sources (v1.10):** > This version natively supports playback tracking *only* from the following three platforms due to upstream Lavalink driver configurations:
+> 1. **YouTube** (Standard URLs and search queries)
+> 2. **YouTube Music**
+> 3. **SoundCloud**
+>
+> ❌ **Spotify and Apple Music links are not supported out-of-the-box in this release.** Passing these links will be intercepted gracefully by the bot's exception boundaries without crashing your session audio engine. Support for metadata translation proxies is slated for a future development cycle.
 ## License
 
 This project is licensed under the [MIT License](LICENSE).

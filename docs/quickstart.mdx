@@ -1,0 +1,144 @@
+---
+title: "Quickstart: Run the Simple Discord Music Bot Locally"
+sidebarTitle: "Quickstart"
+description: "Clone the repo, install dependencies, start Lavalink via Docker, and play your first song in Discord — all in under ten minutes."
+icon: "hourglass-start"
+---
+
+This guide walks you through every step needed to get Simple Discord Music Bot running on your local machine: cloning the repository, setting up a Python environment, configuring your bot token, launching the Lavalink audio server, and testing playback in a Discord server. The whole process takes under ten minutes if you already have Docker and Python installed.
+
+<Note>
+  Lavalink **must be running** before you start `bot.py`. The bot connects to the Lavalink node during its `on_ready` event — if the node is unreachable at startup, the bot will fail to initialize audio playback.
+</Note>
+
+<Steps>
+  <Step title="Prerequisites">
+    Make sure the following are installed and available in your `PATH` before continuing:
+
+    - **Python 3.12 or later** — Older versions of Python (like 3.10 or lower) will cause the bot to crash on startup.
+    - **Docker** (with `docker compose`) — used to run the Lavalink audio server
+    - **Git** — to clone the repository
+    - **A Discord Bot Token** — create an application and bot user at the [Discord Developer Portal](https://discord.com/developers/applications), then copy the token from the **Bot** tab
+
+    <Info>
+      If you haven't set up a Discord application before, enable the **Message Content Intent** under **Bot → Privileged Gateway Intents** in the Developer Portal. The bot enables this intent in code, and Discord requires you to opt in on the portal side as well.
+    </Info>
+  </Step>
+  <Step title="Clone the Repository">
+    Clone the project from GitHub and navigate into the project directory:
+
+    ```bash
+    git clone https://github.com/DJERLO/Simple-Discord-Music-Bot-Using-Nextcord.git
+    cd Simple-Discord-Music-Bot-Using-Nextcord
+    ```
+  </Step>
+  <Step title="Create and Activate a Virtual Environment">
+    Using a virtual environment keeps the bot's dependencies isolated from your system Python installation.
+
+    First, create the environment:
+
+    ```bash
+    python -m venv venv
+    ```
+
+    Then activate it for your operating system:
+
+    <Tabs>
+      <Tab title="Windows">
+        ```bash
+        venv\Scripts\activate
+        ```
+      </Tab>
+      <Tab title="macOS">
+        ```bash
+        source venv/bin/activate
+        ```
+      </Tab>
+      <Tab title="Linux">
+        ```bash
+        source venv/bin/activate
+        ```
+      </Tab>
+    </Tabs>
+
+    Your terminal prompt should now show `(venv)` to confirm the environment is active.
+  </Step>
+  <Step title="Install Dependencies">
+    Install all required Python packages from `requirements.txt`:
+
+    ```bash
+    pip install -r requirements.txt
+    ```
+
+    This installs the following packages:
+
+    | Package | Purpose |
+    | --- | --- |
+    | `nextcord` | Discord API wrapper for Python |
+    | `nextcord[voice]` | Adds voice connection support to Nextcord |
+    | `python-dotenv` | Loads environment variables from `.env` |
+    | `wavelink` | Async Lavalink client for audio control |
+    | `pytest` | Test runner for the project's test suite |
+    | `pytest-asyncio` | Async support for pytest (used by Discord command tests) |
+    | `pytest-watch` | File watcher that re-runs tests on save |
+
+    <Tip>
+      During development, run `ptw` (pytest-watch) instead of `pytest`. It watches your source files and automatically re-runs the test suite every time you save a change — catching regressions the moment they're introduced.
+    </Tip>
+  </Step>
+  <Step title="Create the .env File">
+    The bot reads your Discord bot token from a `.env` file in the project root. Create the file now:
+
+    ```bash
+    # .env
+    BOT_TOKEN=your_discord_bot_token_here
+    ```
+
+    Replace `your_discord_bot_token_here` with the actual token you copied from the Discord Developer Portal.
+
+    <Note>
+      Never commit the `.env` file to version control. It is already listed in `.gitignore` for your protection — do not remove it from that list.
+    </Note>
+  </Step>
+  <Step title="Start the Lavalink Server with Docker">
+    The bot streams audio through Lavalink, which runs as a Docker container. Start it in the background with:
+
+    ```bash
+    docker-compose up -d
+    ```
+
+    This pulls the official `ghcr.io/lavalink-devs/lavalink:4.2.2` image, mounts your local `application.yml` as its configuration file, and exposes port `2333` so the bot can connect. The `unless-stopped` restart policy means Lavalink will come back up automatically after a system reboot.
+
+    Confirm it is running:
+
+    ```bash
+    docker ps
+    ```
+
+    You should see a container named `lavalink_node` with status `Up`.
+  </Step>
+  <Step title="Run the Bot">
+    With Lavalink running and your `.env` file in place, start the bot:
+
+    ```bash
+    python bot.py
+    ```
+
+    On startup the bot will:
+
+    1. Load `BOT_TOKEN` from `.env`
+    2. Connect to the Lavalink node at `http://127.0.0.1:2333`
+    3. Sync all slash commands with Discord
+    4. Log in and display its tag in the terminal
+
+    You should see no connection errors in the terminal output if Lavalink is healthy.
+  </Step>
+  <Step title="Test Playback in Discord">
+    1. Open Discord and join a **voice channel** in a server where your bot has been invited
+    2. In any text channel, type `/play` and enter a song name or YouTube URL when prompted
+    3. The bot will join your voice channel, post an "Added to Queue" embed, and begin streaming the track
+    4. A **Now Playing** embed will appear in the channel and the bot's status will update to reflect the current track
+
+    Try `/queue` to see the paginated queue browser, `/pause` and `/resume` to control playback, and `/skip` to move to the next song.
+  </Step>
+</Steps>

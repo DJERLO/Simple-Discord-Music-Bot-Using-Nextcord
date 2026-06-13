@@ -1,0 +1,172 @@
+---
+title: "Deploy Lavalink via Docker for Your Discord Music Bot"
+sidebarTitle: "Lavalink Setup"
+description: "Set up Lavalink, the standalone Java audio server that handles all audio decoding and streaming so your Python bot stays lightweight."
+icon: "docker"
+---
+
+Lavalink is a standalone Java audio server that your bot delegates all audio decoding and streaming work to. Rather than processing audio inside the Python process, the bot sends playback instructions over HTTP to Lavalink, which handles the heavy lifting independently. Docker is the recommended way to run Lavalink — you get a fully reproducible environment without installing Java, managing versions, or touching system dependencies on your host machine.
+
+<Warning>
+  If you choose to run Lavalink **without** Docker, it requires **Java 17 or higher**. The containerised approach below avoids this requirement entirely.
+</Warning>
+
+<Note>
+  Local FFmpeg is **not** required. Lavalink handles all audio decoding and processing internally inside its own container.
+</Note>
+
+## docker-compose.yml
+
+The project ships with a ready-made `docker-compose.yml` that pulls the official Lavalink 4.x image and wires up everything the bot expects.
+
+```yaml docker-compose.yml
+services:
+  lavalink:
+    image: ghcr.io/lavalink-devs/lavalink:4.2.2 # Uses the stable v4 production release
+    container_name: lavalink_node
+    restart: unless-stopped
+    ports:
+      - "2333:2333" # Opens the port so your Python bot can talk to it
+    volumes:
+      - ./application.yml:/opt/Lavalink/application.yml # Passes your config into the container
+    environment:
+      - _JAVA_OPTIONS=-Xmx512M # Allocates max 512MB RAM (perfect for a lightweight lofi bot)
+```
+
+Key values to note:
+
+| Field | Value | Purpose |
+| --- | --- | --- |
+| `image` | `ghcr.io/lavalink-devs/lavalink:4.2.2` | Pinned stable release |
+| `container_name` | `lavalink_node` | Friendly name for `docker` CLI commands |
+| `restart` | `unless-stopped` | Auto-restarts on crash; stops only on explicit `docker stop` |
+| `ports` | `2333:2333` | Exposes Lavalink's HTTP API to the host |
+| `_JAVA_OPTIONS` | `-Xmx512M` | Caps JVM heap at 512 MB |
+
+## application.yml
+
+The volume mount injects `application.yml` into the container at `/opt/Lavalink/application.yml`. This file controls Lavalink's server port, authentication password, enabled audio sources, and logging output.
+
+```yaml application.yml
+server:
+  port: 2333
+  address: 0.0.0.0
+
+plugins:
+  youtube:
+      enabled: true # Enable the new plugin's configuration
+      allowSearch: true
+      allowDirectVideoIds: true
+      allowDirectPlaylistIds: true
+
+lavalink:
+  plugins:
+    - dependency: "dev.lavalink.youtube:youtube-plugin:1.18.1"
+  server:
+    password: "youshallnotpass"
+    sources:
+      youtube: false
+      soundcloud: true
+      scSearch: true
+      local: false
+      http: true # Crucial for streaming 24/7 direct audio/mp3 URLs
+    bufferDurationMs: 400
+    youtubePlaylistLoadLimit: 6
+    gc-warnings: true
+
+metrics:
+  prometheus:
+    enabled: false
+    endpoint: /metrics
+
+logging:
+  file:
+    path: ./logs/lavalink.log
+  level:
+    root: INFO
+    lavalink: INFO
+```
+
+Notable configuration choices:
+
+- **YouTube plugin** (`dev.lavalink.youtube:youtube-plugin:1.18.1`) — the official plugin replaces the built-in YouTube source; `allowSearch`, `allowDirectVideoIds`, and `allowDirectPlaylistIds` are all enabled.
+- **SoundCloud** (`soundcloud: true`, `scSearch: true`) — enables SoundCloud playback and search.
+- **HTTP source** (`http: true`) — allows Lavalink to stream direct audio URLs such as `.mp3` files.
+- **`bufferDurationMs: 400`** — sets the audio buffer to 400 ms for smooth playback.
+- **Logging** — Lavalink writes `INFO`-level logs to `./logs/lavalink.log` inside the container.
+
+## Starting Lavalink
+
+<Steps>
+  <Step title="Verify Docker is running">
+    Open a terminal and confirm the Docker daemon is active:
+
+    ```bash
+    docker info
+    ```
+
+    If Docker is not running, start Docker Desktop (macOS/Windows) or run `sudo systemctl start docker` (Linux).
+  </Step>
+  <Step title="Start Lavalink in the background">
+    From the project root (the directory containing `docker-compose.yml`), run:
+
+    ```bash
+    docker-compose up -d
+    ```
+
+    The `-d` flag runs the container detached so it continues in the background after you close the terminal.
+  </Step>
+  <Step title="Verify Lavalink is running">
+    Open `http://localhost:2333` in a browser or use `curl`:
+
+    ```bash
+    curl http://localhost:2333
+    ```
+
+    Lavalink returns a short HTML or JSON response when it is online. Any response on port 2333 confirms it is healthy.
+  </Step>
+  <Step title="Inspect the logs (optional)">
+    To follow Lavalink's output in real time:
+
+    ```bash
+    docker-compose logs lavalink
+    ```
+
+    Add `-f` to stream logs continuously:
+
+    ```bash
+    docker-compose logs -f lavalink
+    ```
+  </Step>
+</Steps>
+
+## Stopping Lavalink
+
+To stop and remove the container:
+
+```bash
+docker-compose down
+```
+
+This tears down the container but preserves your `application.yml` and the `logs/` directory on the host.
+
+## Common Issues
+
+<Accordion title="Port 2333 is already in use">
+  Another process is bound to port 2333. Find and stop it, or change the host-side port in `docker-compose.yml`:
+
+  ```yaml
+  ports:
+    - "2334:2333"  # host port 2334 maps to container port 2333
+  ```
+
+  If you change the port, update `bot.py`'s `on_ready` handler to match the new URI (`http://127.0.0.1:2334`).
+</Accordion>
+
+<Accordion title="Docker is not running">
+  `docker-compose up` will exit immediately with a connection error if the Docker daemon is not active. Start Docker and retry.
+</Accordion>
+
+<Accordion title="Container exits immediately">
+  Run `docker-compose logs lavalink` to read the startup output. A malformed `application.yml` (incorrect indentation, wrong password format) is the most common cause of an instant exit.
+</Accordion>
