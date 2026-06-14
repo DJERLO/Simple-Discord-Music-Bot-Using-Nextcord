@@ -1,42 +1,135 @@
 ---
-title: "Local documentation workflow"
-sidebarTitle: "Local development"
-description: "Use the repository npm scripts to preview, validate, and check links for the Mintlify docs site on your machine."
+title: "Local Documentation Workflow"
+sidebarTitle: "Local Development"
+description: "Install the Mintlify CLI to preview documentation locally, test changes in real time, and catch build errors."
 icon: "terminal"
 ---
 
-You can preview and validate the docs site locally with the npm scripts in the project root.
+Following a **docs-as-code** workflow allows us to treat documentation with the same rigor as our bot logic. We use the Mintlify CLI to ensure all content is validated before reaching production.
 
-## Use the docs scripts
+## Install the CLI
 
-From the repository root, run these commands:
+### Prerequisites
 
+* [Node.js](https://nodejs.org/en) v20.17.0+ (LTS versions recommended)
+
+### Installation
+
+<CodeGroup>
+  ```bash npm
+  npm i -g mint
+  ```
+
+  ```bash pnpm
+  pnpm add -g mint
+  ```
+</CodeGroup>
+
+---
+
+## Contributor commands
+
+If you are contributing content, use these commands (via npm wrappers) to verify your work.
+
+### Local preview
+Run this to start a live-reloading server at `localhost:3000`.
 ```bash
 npm run docs:dev
 ```
 
-This starts the Mintlify preview server for the docs site.
-
+### Validation
+Run this to catch structural errors or configuration issues in `docs.json`.
 ```bash
 npm run docs:validate
 ```
 
-This validates the documentation build and catches structural problems.
-
+### Link checking
+Run this when you add or rename pages to confirm all internal paths still resolve.
 ```bash
 npm run docs:links
 ```
 
-This checks internal links and helps you catch broken page references before you publish.
+---
 
-## Recommended workflow
+## Maintainer commands
 
-1. Run `npm run docs:dev` to preview changes in your browser.
-2. Run `npm run docs:validate` before you commit documentation updates.
-3. Run `npm run docs:links` when you add or rename pages to confirm the navigation still resolves.
+These commands are typically reserved for the **Owner** or **Team** to manage the documentation infrastructure.
 
-## What to remember
+### Update CLI
+If the local preview differs from production, sync your CLI version:
+```bash
+mint update
+```
 
-- Keep the docs workflow in the repository root so contributors use the same commands.
-- Use the preview server when you are adjusting text, navigation, or page structure.
-- Use validation and link checks before you open a pull request.
+### Create or scrape content
+For initializing new sections or migrating documentation from external sources:
+```bash
+mint new [directory]
+mint scrape <url>
+```
+
+---
+
+## Formatting
+
+To maintain a consistent style, we recommend using the following extensions for MDX syntax highlighting and automated formatting:
+
+*   **Cursor / VS Code**: MDX Extension and Prettier.
+*   **JetBrains**: MDX Plugin and Prettier.
+
+---
+
+## Troubleshooting
+
+<AccordionGroup>
+  <Accordion title="Error: Could not load the 'sharp' module">
+    This usually happens due to an outdated Node.js version.
+    1. Uninstall: `npm uninstall -g mint`
+    2. Upgrade to Node.js v20.17.0+.
+    3. Reinstall: `npm install -g mint`
+  </Accordion>
+
+  <Accordion title="Issue: Encountering an unknown error">
+    **Solution**: Delete the `~/.mintlify` folder in your user home directory and run `npm run docs:dev` again.
+  </Accordion>
+
+  <Accordion title="Error: permission denied">
+    This occurs if you lack global install permissions.
+    **Solution**: Use `sudo npm i -g mint` on macOS/Linux, or run your terminal as Administrator on Windows.
+  </Accordion>
+
+  <Accordion title="mintlify vs mint package">
+    If you have both `mint` and `mintlify` packages installed, they will conflict.
+    **Solution**:
+    ```bash
+    npm uninstall -g mintlify
+    npm cache clean --force
+    npm i -g mint
+    ```
+  </Accordion>
+
+  <Accordion title="Client version shows 'none'">
+    This happens when a corporate firewall or VPN blocks the CLI from downloading the client app.
+    **Solution**: Add `releases.mintlify.com` to your network allowlist.
+  </Accordion>
+</AccordionGroup>
+
+## Related Topics
+
+<CardGroup cols={2}>
+  <Card title="Contribution Guide" icon="code-branch" href="/development/contribution">
+    Use the docs workflow and PR guidance when you update the site.
+  </Card>
+
+  <Card title="Testing Strategies" icon="tachometer-alt-fastest" href="/development/testing-strategies">
+    Validate docs-related changes and bot changes with the existing test suite.
+  </Card>
+
+  <Card title="Environment Variables" icon="key" href="/setup/environment-variables">
+    Confirm the settings that your local setup depends on.
+  </Card>
+
+  <Card title="Quickstart" icon="rocket" href="/quickstart">
+    Revisit the end-to-end setup path after you validate the docs locally.
+  </Card>
+</CardGroup>

@@ -149,20 +149,22 @@ YouTube support is provided by the community plugin rather than Lavalink's built
   Lavalink handles audio decoding and FFmpeg internally inside its Java process. You do **not** need to install FFmpeg on the machine running the Python bot — only on the host running the Lavalink Docker container, where it is bundled automatically.
 </Note>
 
+## Related Topics
+
 <CardGroup cols={2}>
+  <Card title="Modular Bot Layout" icon="file-code" href="/architecture/modular-layout">
+    Understand how the startup path and cog structure fit together.
+  </Card>
+
   <Card title="Queue View" icon="list" href="/architecture/queue-view">
-    How the paginated Discord UI for browsing the queue is built and secured.
+    Explore the paginated queue UI that users interact with during playback.
   </Card>
 
-  <Card title="Lavalink Setup" icon="server" href="/guides/lavalink-setup">
-    Step-by-step guide to running Lavalink with Docker Compose.
-  </Card>
-
-  <Card title="Playback Commands" icon="play" href="/commands/playback">
-    Reference for /play, /skip, /pause, /resume, /stop, and /nowplaying.
+  <Card title="Lavalink Setup" icon="docker" href="/guides/lavalink-setup">
+    Follow the Docker guide for the audio server that powers the architecture above.
   </Card>
 
   <Card title="Configuration" icon="gear" href="/configuration">
-    All configurable values in application.yml and .env explained.
+    Review the environment variables and Lavalink settings that connect the stack.
   </Card>
 </CardGroup>

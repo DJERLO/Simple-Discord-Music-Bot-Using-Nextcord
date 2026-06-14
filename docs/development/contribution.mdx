@@ -1,0 +1,124 @@
+---
+title: "Contribution"
+sidebarTitle: "Contribution Guide"
+description: "Report bugs, suggest features, and help improve the modular Discord music bot project."
+icon: "code-branch"
+---
+
+You can help improve this project in two practical ways: report issues you encounter, or suggest a feature you want to see added to the modular command set.
+
+## Report a bug
+
+1. **Check existing issues**: Before opening a new one, check if it's already reported in our [GitHub Issues](https://github.com/DJERLO/Simple-Discord-Music-Bot-Using-Nextcord/issues).
+2. **Open an issue**: Provide a short title and a clear summary of what happened.
+3. **Include environment details**:
+    - Python version
+    - Nextcord and Wavelink versions
+    - Whether Lavalink is running in Docker
+    - The command you ran and any error message you saw
+4. **Steps to reproduce**: If possible, add the smallest possible steps to reproduce the issue.
+
+## Suggest a feature
+
+1. **Describe the behavior**: Focus on the user-facing behavior you want.
+2. **Explain the value**: Explain why it would help server owners, DJs, or listeners.
+3. **Suggest a module**: If you know which cog or module it belongs to, mention it so the change fits our modular layout.
+
+## Pull Request (PR) Guide
+
+If you are ready to contribute code, follow these steps to ensure a smooth review:
+
+1. **Fork and Clone**: Fork the repository to your own account and clone it locally.
+2. **Create a Branch**: Use a descriptive branch name (e.g., `fix/previous-command-logic` or `feat/autoplay-notifications`).
+3. **Keep it Modular**: Ensure your changes respect the `cogs/`, `core/`, and `ui/` structure.
+4. **Test your changes**: Run the tests for your specific module before submitting.
+5. **Update Documentation**: If you add or change a feature, update the corresponding `.mdx` files in `docs/` and verify with `mint validate`.
+6. **Submit the PR**: Submit your Pull Request to the [main repository](https://github.com/DJERLO/Simple-Discord-Music-Bot-Using-Nextcord/pulls). Provide a summary of the changes and link any related issues.
+
+## Writing documentation
+
+We use Mintlify to power our documentation. If you are adding a new feature or enhancing an existing one, you must update the documentation to match.
+
+### Setup and local preview
+
+To write and preview documentation, you should install the Mintlify CLI globally on your machine:
+
+```bash
+npm i -g mint
+```
+<Note>
+For detailed instructions on running the preview server and validating your changes using the project's built-in scripts, see the [Local development](https://mintlify.wiki/DJERLO/Simple-Discord-Music-Bot-Using-Nextcord/setup/local-development) guide.
+</Note>
+### Documenting features and enhancements
+
+When adding a new module or changing existing behavior, follow these steps to keep the docs helpful:
+
+1.  **Create or locate the page**: New features should typically get their own `.mdx` file in the relevant subdirectory (e.g., `docs/guides/` or `docs/development/`). Use kebab-case for filenames.
+2.  **Add Frontmatter**: Every page requires a title and description.
+    ```yaml
+    ---
+    title: "Feature Name"
+    description: "Briefly explain what this feature does for the user."
+    ---
+    ```
+3.  **Use Mintlify components**: Enhance your documentation with components to make it more readable:
+    *   Use `<Note>` for supplementary information.
+    *   Use `<Warning>` for critical setup steps or potential breaking changes.
+    *   Use `<CodeGroup>` when showing examples in different formats or environments.
+4.  **Keep it concise**: Avoid marketing jargon. Use active voice and lead with context (explain what it is before explaining how to use it).
+5.  **Update navigation**: If you created a new page, you must add it to the `navigation` array in `docs.json` at the project root, or it will not appear in the sidebar.
+
+### Validation
+
+Before submitting your PR, always run the validation suite to ensure no broken links or structural errors were introduced:
+
+*   `npm run docs:validate`
+*   `npm run docs:links`
+
+## Good issue examples
+
+- "/previous fails after skipping twice in the same session."
+- "/queue does not update after autoplay tracks are added."
+- "The bot should show a clearer message when Lavalink is unavailable."
+
+## What to expect
+
+## Code quality
+
+We enforce code quality standards using **Ruff**. Before submitting a Pull Request, ensure your code is linted and formatted correctly.
+
+### Linting and formatting
+
+Run the following commands from the project root:
+
+1.  **Format code**: `ruff format .`
+2.  **Lint check**: `ruff check .`
+
+For a deeper dive into our linting rules and how to fix common issues, refer to the Ruff documentation guide.
+
+## Testing
+
+We use `pytest` to ensure the reliability of our core logic and command modules. All new features should include corresponding tests.
+- The maintainers will review the request against the current code in `cogs/`, `core/`, and `ui/`.
+- If the idea fits the project, the next step is a small implementation plan or follow-up question.
+- If you are ready to contribute code, pair your issue with the relevant tests and docs updates so the change stays easy to review.
+
+## Related Topics
+
+<CardGroup cols={2}>
+  <Card title="Linting and Formatting" icon="bolt" href="/development/linting-formatting">
+    Maintain high code quality in the testbot project using Ruff.
+  </Card>
+
+  <Card title="Testing with Pytest & Strageties" icon="tachometer-alt-fastest" href="development/testing-strategies.mdx">
+    Customize environment variables, Lavalink connection settings, and bot permissions.
+  </Card>
+
+  <Card title="Lavalink Setup" icon="docker" href="/guides/lavalink-setup">
+    Deep-dive into running and tuning the Lavalink Docker node.
+  </Card>
+
+  <Card title="Playback Commands" icon="music" href="/commands/playback">
+    Full reference for every slash command the bot exposes.
+  </Card>
+</CardGroup>

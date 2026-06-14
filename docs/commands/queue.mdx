@@ -135,3 +135,23 @@ Each page slice is `songs[page * per_page : (page + 1) * per_page]`.
 **Error responses**
 
 There are no error paths for this command; it always succeeds from the user's perspective.
+
+## Related Topics
+
+<CardGroup cols={2}>
+  <Card title="Playback Commands" icon="play" href="/commands/playback">
+    See how the currently playing track is controlled before and after queue changes.
+  </Card>
+
+  <Card title="Queue View" icon="list" href="/architecture/queue-view">
+    Understand the interactive pagination UI behind the `/queue` command.
+  </Card>
+
+  <Card title="Utility Commands" icon="tools" href="/commands/utility">
+    Use quick diagnostics and help pages alongside the queue controls.
+  </Card>
+
+  <Card title="Configuration" icon="gear" href="/configuration">
+    Confirm the Lavalink and permission settings that support queue playback.
+  </Card>
+</CardGroup>

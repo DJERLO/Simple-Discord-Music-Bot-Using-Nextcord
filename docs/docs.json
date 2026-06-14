@@ -15,7 +15,9 @@
   },
   "footer": {
     "socials": {
-      "github": "https://github.com/DJERLO/Simple-Discord-Music-Bot-Using-Nextcord"
+      "github": "https://github.com/DJERLO/",
+      "linkedin": "https://www.linkedin.com/jerlo-de-leon",
+      "facebook": "https://www.facebook.com/jerlo.francisco.deleon"
     }
   },
   "navigation": {
@@ -29,7 +31,7 @@
         ]
       },
       {
-        "group": "Music",
+        "group": "Music Commands",
         "pages": [
           "commands/playback",
           "commands/queue",
@@ -61,15 +63,17 @@
       {
         "group": "Development",
         "pages": [
-          "contributing",
-          "development/testing"
+          "development/contribution",
+          "development/linting-formatting",
+          "development/testing-strategies"
         ]
       },
       {
         "group": "Guides",
         "pages": [
           "guides/lavalink-setup",
-          "guides/bot-setup"
+          "guides/bot-setup",
+          "guides/vps-deployment"
         ]
       }
     ]
