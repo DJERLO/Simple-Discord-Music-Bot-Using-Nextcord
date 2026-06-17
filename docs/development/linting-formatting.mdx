@@ -1,0 +1,89 @@
+---
+title: "Linting and Formatting"
+sidebarTitle: "Linting and Formatting"
+description: "Maintain high code quality in the testbot project using Ruff."
+icon: "bolt"
+---
+
+We use [Ruff](https://docs.astral.sh/ruff/) to ensure our Python code is clean, consistent, and follows best practices. Ruff replaces multiple tools like Flake8, Black, and isort with a single, extremely fast executable.
+
+### Installation
+
+Ruff is included in the project's development dependencies. You can ensure it is installed by running:
+
+```bash
+pip install ruff
+```
+
+### Usage
+
+#### Linting (Checking for errors)
+To check the entire project for linting errors and logical issues, run:
+
+```bash
+ruff check .
+```
+
+If you want Ruff to automatically fix safe violations (like unused imports), use:
+
+```bash
+ruff check --fix .
+```
+
+#### Formatting (Code style)
+We follow a strict formatting standard. To automatically format your code to match the project style:
+
+```bash
+ruff format .
+```
+
+<Tip>
+  Running `ruff format .` before submitting a Pull Request is highly recommended to avoid CI failures related to code style.
+</Tip>
+
+### Configuration
+
+Our linting and formatting rules are defined in `pyproject.toml`. We follow PEP 8 standards with a target version of Python 3.12 and a line-length limit of 88 characters.
+
+Key configuration details:
+
+*   **Target Version**: `py312` (Python 3.12).
+*   **Line Length**: 88 characters (matching the Black code style).
+*   **Selected Rules**: 
+    *   `E`/`W`: Pycodestyle errors and warnings.
+    *   `F`: Pyflakes checks.
+    *   `I`: Isort for automated import sorting.
+*   **Import Sorting**: `combine-as-imports` is enabled to keep imports concise.
+
+```toml
+[tool.ruff]
+target-version = "py312"
+line-length = 88
+lint.select = ["E", "F", "W", "I"]
+lint.ignore = []
+
+[tool.ruff.lint.isort]
+combine-as-imports = true
+```
+
+Install the Mintlify CLI to preview documentation locally, test changes in real time, and catch build errors.
+
+## Related Topics
+
+<CardGroup cols={2}>
+  <Card title="How to Contribute" icon="code-branch" href="/development/contribution">
+    Report bugs, suggest features, and help improve the modular Discord music bot project.
+  </Card>
+
+  <Card title="Testing with Pytest & Strategies" icon="tachometer-alt-fastest" href="/development/testing-strategies">
+    Customize environment variables, Lavalink connection settings, and bot permissions.
+  </Card>
+
+  <Card title="Lavalink Setup" icon="docker" href="/guides/lavalink-setup">
+    Deep-dive into running and tuning the Lavalink Docker node.
+  </Card>
+
+  <Card title="Playback Commands" icon="music" href="/commands/playback">
+    Full reference for every slash command the bot exposes.
+  </Card>
+</CardGroup>

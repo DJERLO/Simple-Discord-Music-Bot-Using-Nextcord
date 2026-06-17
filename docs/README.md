@@ -1,55 +1,24 @@
-# Mintlify Starter Kit
+# Documentation Overview
 
-Use the starter kit to get your docs deployed and ready to customize.
+This folder contains the Mintlify documentation for the Simple Discord Music Bot project.
 
-Click the green **Use this template** button at the top of this repo to copy the Mintlify starter kit. The starter kit contains examples with
+## What lives here
 
-- Guide pages
-- Navigation
-- Customizations
-- API reference pages
-- Use of popular components
+- `docs.json` defines the site navigation and theme.
+- The `.mdx` pages in this folder describe setup, commands, architecture, and contributor workflows.
+- The project-specific docs should stay aligned with the current bot code in `cogs/`, `core/`, and `ui/`.
 
-**[Follow the full quickstart guide](https://starter.mintlify.com/quickstart)**
+## Recommended workflow
 
-## AI-assisted writing
+1. Update the relevant page in `docs/` whenever a command, setting, or workflow changes.
+2. Validate docs locally with `npm run docs:validate`.
+3. Check links with `npm run docs:links` before opening a pull request.
 
-Set up your AI coding tool to work with Mintlify:
+## Helpful starting points
 
-```bash
-npx skills add https://mintlify.com/docs
-```
+- `/` for the landing page
+- `/quickstart` for local setup
+- `/configuration` for environment and Lavalink settings
+- `/development/contribution` for contribution guidance
 
-This command installs Mintlify's documentation skill for your configured AI tools like Claude Code, Cursor, Windsurf, and others. The skill includes component reference, writing standards, and workflow guidance.
-
-See the [AI tools guides](/ai-tools) for tool-specific setup.
-
-## Development
-
-Install the [Mintlify CLI](https://www.npmjs.com/package/mint) to preview your documentation changes locally. To install, use the following command:
-
-```
-npm i -g mint
-```
-
-Run the following command at the root of your documentation, where your `docs.json` is located:
-
-```
-mint dev
-```
-
-View your local preview at `http://localhost:3000`.
-
-## Publishing changes
-
-Install our GitHub app from your [dashboard](https://dashboard.mintlify.com/settings/organization/github-app) to propagate changes from your repo to your deployment. Changes are deployed to production automatically after pushing to the default branch.
-
-## Need help?
-
-### Troubleshooting
-
-- If your dev environment isn't running: Run `mint update` to ensure you have the most recent version of the CLI.
-- If a page loads as a 404: Make sure you are running in a folder with a valid `docs.json`.
-
-### Resources
-- [Mintlify documentation](https://mintlify.com/docs)
+Use the existing Mintlify pages as the source of truth for project documentation, and keep any new content focused on the actual bot behavior rather than repeating the same setup steps in multiple places.

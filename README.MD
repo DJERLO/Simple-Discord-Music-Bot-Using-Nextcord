@@ -28,6 +28,7 @@ For my version, I used **Nextcord** as the main Discord API wrapper.
 
 * **`cogs/`** — Slash command definitions (`music_commands.py`) and audio event listeners (`events.py`).
 * **`core/`** — Internal logic, including permission decorators and custom player extensions.
+* **`docs/`** — Mintlify documentation source containing .mdx markdown files for documentation, references and the `docs.json` configuration file for navigation and styling. 
 * **`ui/`** — Interface design, containing rich embeds (`embeds.py`) and interactive views (`views.py`).
 * **`tests/`** — Comprehensive `pytest` suite for playback logic and queue management.
 

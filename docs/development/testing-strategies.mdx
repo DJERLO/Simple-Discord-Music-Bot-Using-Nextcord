@@ -1,0 +1,106 @@
+---
+title: "Testing the modular bot"
+sidebarTitle: "Testing"
+description: "Run focused pytest commands for the modular music, event, UI, and permissions tests in this project."
+icon: "tachometer-alt-fastest"
+---
+
+You can validate the modular codebase with the existing pytest suite under `tests/`. The tests cover the playback commands, queue behavior, event handlers, permissions checks, and the connection bootstrap that the modular architecture depends on.
+
+## Run the full suite
+
+```bash
+pytest tests -v
+```
+
+## Run focused modules
+
+```bash
+pytest tests/test_playback.py -v
+pytest tests/test_queue.py -v
+pytest tests/test_events.py -v
+pytest tests/test_permissions.py -v
+pytest tests/test_connection.py -v
+```
+
+## Run one specific test
+
+```bash
+pytest tests/test_playback.py::test_previous_command_navigates_unified_history -v
+```
+
+## Testing the `tests/` folder
+
+The `tests/` folder contains the core suite for the modular bot:
+
+- `tests/conftest.py` — shared fixtures and setup for all tests.
+  - `songs`, `mock_track`, `mock_user`, and `guild_id` create reusable test data.
+  - `mock_bot_presence` patches bot presence changes.
+  - `clean_active_players` clears shared runtime state such as `ACTIVE_PLAYERS`, `AUTO_DISCONNECT_TASKS`, and `VOTE_SKIPS`.
+  - `cog` returns the `MusicCommands` cog instance for command tests.
+
+- `tests/test_connection.py` — environment validation.
+  - `test_environment_variables_load` confirms required variables are present: `BOT_TOKEN`, `LAVALINK_URI`, and `LAVALINK_PASSWORD`.
+
+- `tests/test_events.py` — event handling and regression checks.
+  - `test_regression_empty_channel_continues_playing_leak` verifies an empty voice channel does not incorrectly keep playback alive.
+  - `test_patch_v101_user_rejoin_cancels_countdown` checks that a returning user cancels an active auto-disconnect countdown.
+  - `test_patch_v101_migration_helper_executes_clean_slate` validates idle-session migration logic clears state, cancels disconnect tasks, deletes embeds, and moves the player.
+  - `test_on_wavelink_track_end_partial_empty_auto_queue_fallback` ensures partial autoplay re-populates the queue when both regular and auto queues are empty.
+
+- `tests/test_permissions.py` — user permission and vote-skip behavior.
+  - `test_voteskip_logic_immediate_solo` asserts a single listener can skip immediately.
+  - `test_voteskip_logic_threshold_met` verifies the 50% vote threshold triggers a skip only when enough listeners agree.
+  - `test_dj_permission_logic_pass_scenarios` covers the server owner, administrator, and DJ role cases, and rejects non-privileged users.
+
+- `tests/test_playback.py` — playback command behavior, guards, and state persistence.
+  - `test_skip_command_playing` confirms the skip command works when audio is active.
+  - `test_pause_command_success` and `test_resume_command_success` verify pause/resume behavior.
+  - `test_stop_command_success` ensures stop clears the queue, disconnects voice, and removes active player state.
+  - `test_play_command_new_connection` covers fresh join and track enqueue behavior.
+  - `test_play_command_no_results` confirms the command handles empty search results.
+  - `test_nowplaying_command_playing` validates now-playing embed content.
+  - `test_ping_command` verifies latency reporting.
+  - `test_join_command_user_not_in_voice` guards join when the user is not in voice.
+  - `test_volume_command_no_voice_client`, `test_volume_command_out_of_bounds_guards`, and `test_volume_command_success_boundaries` cover volume error handling and valid bounds.
+  - `test_loop_command_guard_when_not_playing` and `test_loop_command_toggle_state_inversion` verify loop command behavior.
+  - `test_autoplay_command_guard_when_disconnected` and `test_autoplay_command_and_global_persistence_mapping` verify autoplay mode persistence and disconnected guard behavior.
+  - `test_update_player_message_ignores_api_errors` ensures persistent message updates do not crash on edit failure.
+  - `test_join_restores_persisted_autoplay_mode` validates join restores saved autoplay mode.
+  - `test_previous_command_navigates_unified_history` and `test_previous_command_no_history_fails` cover previous-track navigation and no-history failures.
+  - `test_remove_command_removes_from_regular_queue` and `test_remove_command_removes_from_auto_queue` verify removal logic for regular queue and autoplay queue entries.
+
+- `tests/test_queue.py` — queue UI and queue command tests.
+  - `test_queue_view_pagination_logic` checks pagination, button states, and embed text for the queue view.
+  - `test_clearqueue_command` verifies clearing both regular and autoplay queues.
+  - `test_shuffle_command_success` validates queue shuffling.
+  - `test_queue_command_enforces_recommendation_limit` ensures the queue display caps recommendations to a manageable subset.
+  - `test_remove_command_success`, `test_remove_command_invalid_position`, and `test_remove_command_auto_queue_success` cover removing tracks from both queues and invalid positions.
+
+## Watch for changes during development
+
+```bash
+ptw
+```
+
+This command watches the Python files and re-runs the suite whenever you save a change, which makes it easier to catch regressions while you work on the modular cog layout.
+
+## Related Topics
+
+<CardGroup cols={2}>
+  <Card title="How to Contribute" icon="code-branch" href="/development/contribution">
+    Report bugs, suggest features, and help improve the modular Discord music bot project.
+  </Card>
+
+  <Card title="Linting and Formatting" icon="bolt" href="/development/linting-formatting">
+    Maintain high code quality in the testbot project using Ruff.
+  </Card>
+
+  <Card title="Local Development" icon="terminal" href="/setup/local-development">
+    Install the Mintlify CLI to preview documentation locally, test changes in real time, and catch build errors.
+  </Card>
+
+  <Card title="Lavalink Setup" icon="docker" href="/guides/lavalink-setup">
+    Deep-dive into running and tuning the Lavalink Docker node.
+  </Card>
+</CardGroup>

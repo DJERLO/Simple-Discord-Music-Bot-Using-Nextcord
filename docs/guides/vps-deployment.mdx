@@ -1,0 +1,174 @@
+---
+title: "Deploy the bot on a VPS and rent a Lavalink server"
+sidebarTitle: "VPS Deployment"
+description: "Run the bot on a VPS, connect it to a rented Lavalink server, and follow the key YouTube and Discord terms that apply to music bots."
+icon: "server"
+---
+
+You can host the bot on a small VPS and keep the audio work on a separate Lavalink node. This split is a practical setup for production because the Python process stays lightweight while the audio server handles the heavy streaming work.
+
+<Warning>
+  This guide is for lawful, authorized deployment only. You must follow the Terms of Service of YouTube, Discord, and your hosting provider. Do not play copyrighted material you do not have permission to stream, and do not use automated tools that bypass official platform rules.
+</Warning>
+
+## Choose the hosting layout
+
+A common production layout is:
+
+1. **VPS for the bot** — runs `bot.py`, reads `.env`, and connects to Lavalink.
+2. **Lavalink server** — hosted on a separate machine or managed service, exposes port `2333`, and receives playback requests from the bot.
+3. **Discord application** — keeps the bot token and permissions separated from the server runtime.
+
+This is a good fit for providers such as HeavenCloud, Hetzner, DigitalOcean, or any VPS with Ubuntu 22.04 or 24.04.
+
+## 1. Prepare the VPS
+
+Use a small server with at least:
+
+- 2 vCPUs
+- 2 GB RAM
+- 20 GB SSD
+- Ubuntu 22.04 or 24.04
+
+Install the runtime dependencies on the VPS:
+
+```bash
+sudo apt update
+sudo apt install -y python3 python3-venv python3-pip git curl
+```
+
+Clone the project and create a virtual environment:
+
+```bash
+cd /opt
+sudo git clone https://github.com/DJERLO/Simple-Discord-Music-Bot-Using-Nextcord.git
+cd Simple-Discord-Music-Bot-Using-Nextcord
+python3 -m venv venv
+source venv/bin/activate
+pip install -r requirements.txt
+```
+
+Create a `.env` file with your bot settings:
+
+```bash
+BOT_TOKEN=your_discord_bot_token_here
+LAVALINK_URI=http://your-lavalink-host:2333
+LAVALINK_PASSWORD=your_lavalink_password_here
+```
+
+If you are using the current default connection path in `bot.py`, make sure the URI and password match the Lavalink node you rent or deploy.
+
+## 2. Rent or deploy the Lavalink server
+
+You can rent a dedicated Lavalink server from a hosting provider, or run the included Docker stack from this repository on another machine.
+
+Recommended requirements for the Lavalink host:
+
+- Public IPv4 address
+- Port `2333` open in the firewall
+- Java 17 or newer if you run it directly, or Docker if you use the repository setup
+
+If you use the Docker fallback from this repo, the same `docker-compose.yml` and `application.yml` files are enough to start the node on the remote server:
+
+```bash
+docker-compose up -d
+```
+
+Set the same password in both places:
+
+- `application.yml` on the Lavalink host
+- the `LAVALINK_PASSWORD` value in your bot `.env`
+
+## 3. Run the bot as a service
+
+For production, start the bot with `systemd` so it recovers after reboots.
+
+Create a service file:
+
+```bash
+sudo nano /etc/systemd/system/testbot.service
+```
+
+Use a file like this:
+
+```ini
+[Unit]
+Description=Simple Discord Music Bot
+After=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=/opt/Simple-Discord-Music-Bot-Using-Nextcord
+ExecStart=/opt/Simple-Discord-Music-Bot-Using-Nextcord/venv/bin/python /opt/Simple-Discord-Music-Bot-Using-Nextcord/bot.py
+Restart=always
+User=www-data
+Environment=PYTHONUNBUFFERED=1
+
+[Install]
+WantedBy=multi-user.target
+```
+
+Then enable and start the service:
+
+```bash
+sudo systemctl daemon-reload
+sudo systemctl enable testbot
+sudo systemctl start testbot
+sudo systemctl status testbot
+```
+
+## 4. Keep the bot stable
+
+A few production checks help prevent downtime:
+
+- Keep the VPS and Lavalink host on the same network or use a stable public address for the node.
+- Open only the ports you need, especially `2333` for Lavalink.
+- Rotate your Discord bot token if it is ever exposed.
+- Use a strong Lavalink password and keep the two values in sync.
+- Monitor the bot logs with `journalctl -u testbot -f`.
+
+## 5. TOS and compliance notes
+
+When you host a music bot, you are responsible for using the service in line with platform rules.
+
+### YouTube
+
+- Use only content you are allowed to stream.
+- Do not rely on workarounds or unofficial scraping methods that violate YouTube's Terms of Service.
+- Respect copyright, privacy, and platform rate limits.
+
+### Discord
+
+- Keep your bot token private.
+- Use only the permissions your bot actually needs.
+- Avoid spammy or abusive command behavior in servers.
+- Follow Discord's Developer Terms and the platform rules for bots and slash commands.
+
+### Hosting provider
+
+- Use a provider that allows the kind of bot and audio traffic you plan to run.
+- Confirm that your chosen VPS or Lavalink plan does not prohibit automated audio or bot services.
+
+<Info>
+  If you are unsure whether a source or provider is allowed, review the platform terms directly before you deploy. The bot code itself does not override or bypass platform restrictions.
+</Info>
+
+## Related Topics
+
+<CardGroup cols={2}>
+  <Card title="Lavalink Setup" icon="docker" href="/guides/lavalink-setup">
+    Run the audio backend that your VPS deployment depends on.
+  </Card>
+
+  <Card title="Bot Setup" icon="discord" href="/guides/bot-setup">
+    Register the Discord application and invite link for the production bot.
+  </Card>
+
+  <Card title="Environment Variables" icon="key" href="/setup/environment-variables">
+    Confirm the .env values the bot reads at startup.
+  </Card>
+
+  <Card title="Quickstart" icon="rocket" href="/quickstart">
+    Revisit the local setup path before you move to a VPS deployment.
+  </Card>
+</CardGroup>
