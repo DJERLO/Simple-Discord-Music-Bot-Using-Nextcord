@@ -25,16 +25,44 @@ logger = logging.getLogger("MusicBot")
 
 class WavelinkPlayer(wavelink.Player, nextcord.VoiceProtocol):
     """
-    Custom player class that inherits from
-    Wavelink's Player and Nextcord's VoiceProtocol.
+    Custom player class that inherits from Wavelink's Player and
+    Nextcord's VoiceProtocol, extending base functionality
+    to include custom inactivity handling and unified
+    track history tracking.
+
+    Attributes
+    ----------
+    inactive_timeout : int
+        The duration in seconds the bot will wait in an empty or inactive voice channel
+        before triggering an automatic disconnect event (defaults to 300 seconds).
+
+    Methods
+    -------
+    last_played_track : :class:`wavelink.Playable` | None
+        Property that retrieves the track immediately preceding the current track
+        from the internal history buffer.
     """
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.inactive_timeout = 300  # 5 minutes in seconds
 
     @property
     def last_played_track(self) -> wavelink.Playable | None:
         """
-        Unified history accessor. Since all tracks are logged in
-        vc.queue.history via on_wavelink_track_start, we only need
-        to look there.
+        Retrieves the track immediately preceding the current track
+        from the history buffer.
+
+        This property utilizes the internal `vc.queue.history` list, which is populated
+        during the `on_wavelink_track_start` event. It performs a reverse lookup based
+        on the current track's position to ensure accurate retrieval of the previous
+        playback state.
+
+        Returns
+        -------
+        :class:`wavelink.Playable` | None
+            The previous track object if found in `player.queue.history`;
+            otherwise, None.
         """
         if not self.current or not self.queue.history:
             return None
@@ -59,7 +87,13 @@ class MusicCommands(commands.Cog):
     queue management, and player controls. This cog also includes a listener
     for application command errors to handle permission issues gracefully.
 
+    Attributes
+    ----------
+    bot : Instance of :class:`nextcord.ext.commands.Bot`
+        The main bot instance.
+
     **Commands**:
+    ------------
     - **/play**: Play a song or add it to the queue.
     - **/queue**: Show the current music queue.
     - **/nowplaying**: Show details of the currently playing song.
@@ -107,6 +141,7 @@ class MusicCommands(commands.Cog):
 
         if not vc:
             vc = await voice_channel.connect(cls=WavelinkPlayer)
+            vc.inactive_timeout = 300
             vc.autoplay = GUILD_AUTOPLAY_MODES.get(
                 str(interaction.guild_id), wavelink.AutoPlayMode.disabled
             )
@@ -147,6 +182,7 @@ class MusicCommands(commands.Cog):
                     logger.error(f"Error disconnecting from voice channel: {e}")
                     pass
                 vc = await voice_channel.connect(cls=WavelinkPlayer)
+                vc.inactive_timeout = 300
 
         try:
             tracks = await wavelink.Playable.search(song)
@@ -435,6 +471,7 @@ class MusicCommands(commands.Cog):
                     ACTIVE_PLAYERS[guild_id] = new_msg
         else:
             vc = await voice_channel.connect(cls=WavelinkPlayer)
+            vc.inactive_timeout = 300
             vc.autoplay = GUILD_AUTOPLAY_MODES.get(
                 guild_id, wavelink.AutoPlayMode.disabled
             )

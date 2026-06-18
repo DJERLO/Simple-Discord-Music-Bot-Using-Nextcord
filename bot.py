@@ -1,11 +1,11 @@
-import logging
 import os
-from logging.handlers import RotatingFileHandler
 
 import nextcord
 import wavelink
 from dotenv import load_dotenv
 from nextcord.ext import commands
+
+from core.logging import get_logger
 
 # Load variables from the .env file
 load_dotenv()
@@ -13,23 +13,7 @@ bot_token = os.getenv("BOT_TOKEN")
 lavalink_uri = os.getenv("LAVALINK_URI", "http://127.0.0.1:2333")
 lavalink_password = os.getenv("LAVALINK_PASSWORD", "youshallnotpass")
 
-# Setup logging architecture
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger("MusicBot")
-
-formatter = logging.Formatter(
-    "%(asctime)s [%(levelname)s] %(message)s", datefmt="%Y-%m-%d %H:%M:%S"
-)
-
-console_handler = logging.StreamHandler()
-console_handler.setFormatter(formatter)
-logger.addHandler(console_handler)
-
-file_handler = RotatingFileHandler(
-    "music_bot.log", maxBytes=5 * 1024 * 1024, backupCount=3, encoding="utf-8"
-)
-file_handler.setFormatter(formatter)
-logger.addHandler(file_handler)
+logger = get_logger(__name__)
 
 # Configure bot client instance intents
 intents = nextcord.Intents.default()
