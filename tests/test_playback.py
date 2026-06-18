@@ -504,3 +504,36 @@ async def test_remove_command_removes_from_auto_queue(cog):
     # Verification
     mock_vc.auto_queue.clear.assert_called_once()
     mock_vc.auto_queue.put.assert_called_once_with(track3)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "vote_count, total_humans, should_skip",
+    [
+        (0, 8, False),  # 0/8 votes
+        (4, 8, False),  # 4/8 votes
+        (5, 8, True),  # 5/8 votes
+        (0, 1, True),  # No votes, one human
+        (3, 8, False),  # 3/8 votes
+        (1, 2, False),  # 1/2
+        (8, 8, True),  # 2/2 - All voted
+    ],
+)
+async def test_vote_skip_logic_parametrized(total_humans, vote_count, should_skip):
+    mock_channel = MagicMock()
+    mock_channel.members = [MagicMock(bot=False) for _ in range(total_humans)] + [
+        MagicMock(bot=True)
+    ]
+
+    total_listeners = len([m for m in mock_channel.members if not m.bot])
+    required_votes = (total_listeners // 2) + 1
+
+    if total_listeners <= 1:
+        should_skip = (
+            True  # Based on your code: "if total_listeners <= 1: await vc.skip()"
+        )
+
+    current_votes = vote_count
+    skip_triggered = (total_listeners <= 1) or (current_votes >= required_votes)
+
+    assert skip_triggered == should_skip

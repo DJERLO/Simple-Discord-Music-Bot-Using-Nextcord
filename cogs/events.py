@@ -344,12 +344,12 @@ class AudioEvents(commands.Cog):
         """
         logger.debug(
             "Lavalink Stats Update "
-            "| Players: {payload.players} "
-            "| Playing: {payload.playing} "
-            "| Uptime: {payload.uptime}ms "
-            "| Memory: {payload.memory} "
-            "| CPU: {payload.cpu} "
-            "| Frames: {payload.frames}"
+            f"| Players: {payload.players} "
+            f"| Playing: {payload.playing} "
+            f"| Uptime: {payload.uptime}ms "
+            f"| Memory: {payload.memory} "
+            f"| CPU: {payload.cpu} "
+            f"| Frames: {payload.frames}"
         )
 
     @commands.Cog.listener()
