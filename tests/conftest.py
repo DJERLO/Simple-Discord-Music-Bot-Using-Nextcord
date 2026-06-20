@@ -55,6 +55,14 @@ def clean_active_players():
     ACTIVE_PLAYERS.clear()
 
 
+def patch_wavelink_connected():
+    """Returns a patch context that makes the Wavelink Pool appear connected."""
+    mock_node = MagicMock()
+    mock_node.status = wavelink.NodeStatus.CONNECTED
+    # Patch the dictionary lookup that _is_node_ready uses
+    return patch("wavelink.Pool.nodes", {"test_node": mock_node})
+
+
 @pytest.fixture
 def cog():
     return MusicCommands(bot_instance)

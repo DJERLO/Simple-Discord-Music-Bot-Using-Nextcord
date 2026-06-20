@@ -1,18 +1,21 @@
 import asyncio
-import logging
 import random
 
+import aiohttp
 import nextcord
 import wavelink
 from nextcord import Interaction, SlashOption
 from nextcord.ext import commands
 
 from core.decorators import has_dj_permissions
+from core.logging import get_logger
+from core.setup import get_diagnostic_message
 from ui.embeds import (
     ACTIVE_PLAYERS,
     AUTO_DISCONNECT_TASKS,
     GUILD_AUTOPLAY_MODES,
     MESSAGE_DELETE_TIMEOUT,
+    VOTE_SKIPS,
     create_now_playing_embed,
     format_time,
     get_track_artwork,
@@ -20,7 +23,7 @@ from ui.embeds import (
 )
 from ui.views import QueueView as QueueSongList
 
-logger = logging.getLogger("MusicBot")
+logger = get_logger(__name__)
 
 
 class WavelinkPlayer(wavelink.Player, nextcord.VoiceProtocol):
@@ -81,6 +84,7 @@ class WavelinkPlayer(wavelink.Player, nextcord.VoiceProtocol):
             return self.queue.history[-1]
 
 
+# TODO: Defer all commands with `await interaction.response.defer(ephemeral=True)`
 class MusicCommands(commands.Cog):
     """
     Cog that contains all slash commands related to music playback,
@@ -116,6 +120,13 @@ class MusicCommands(commands.Cog):
 
     def __init__(self, bot: commands.Bot):
         self.bot = bot
+        self.lavalink_node = None
+
+    def _is_node_ready(self):
+        nodes = wavelink.Pool.nodes
+        return nodes and any(
+            n.status == wavelink.NodeStatus.CONNECTED for n in nodes.values()
+        )
 
     # ================= GENERAL COMMAND DECK =================
 
@@ -126,7 +137,12 @@ class MusicCommands(commands.Cog):
         """
         Handles the /play command, allowing users to play a song or add it to the queue.
         """
-        await interaction.response.defer()
+        await interaction.response.defer(ephemeral=True)
+
+        if not self._is_node_ready():
+            return await interaction.followup.send(
+                "**Music system is currently offline.**", ephemeral=True
+            )
 
         if not interaction.user.voice or not interaction.user.voice.channel:
             await interaction.followup.send(
@@ -260,6 +276,10 @@ class MusicCommands(commands.Cog):
         await interaction.response.defer(ephemeral=True)
 
         vc: WavelinkPlayer = interaction.guild.voice_client
+        if not vc:
+            return await interaction.followup.send(
+                "I am not in a voice channel.", ephemeral=True
+            )
 
         if not interaction.user.voice or not interaction.user.voice.channel:
             await interaction.followup.send(
@@ -313,9 +333,10 @@ class MusicCommands(commands.Cog):
                    providing a 'preview' window without flooding the UI.
         - Disabled: No autoplay tracks are shown.
         """
+        await interaction.response.defer(ephemeral=True)
         vc: WavelinkPlayer = interaction.guild.voice_client
         if not vc:
-            return await interaction.response.send_message(
+            return await interaction.followup.send(
                 "I'm not in a voice channel.", ephemeral=True
             )
 
@@ -349,12 +370,12 @@ class MusicCommands(commands.Cog):
                 )
 
         if not songs_list:
-            return await interaction.response.send_message(
+            return await interaction.followup.send(
                 "The queue is currently empty.", ephemeral=True
             )
 
         view = QueueSongList(songs_list, interaction.user, str(interaction.guild_id))
-        await interaction.response.send_message(
+        await interaction.followup.send(
             embed=view.get_embed(), view=view, ephemeral=True
         )
         view.message = await interaction.original_message()
@@ -367,9 +388,10 @@ class MusicCommands(commands.Cog):
         Handles the /nowplaying command, providing users
         with details about the currently playing track.
         """
+        await interaction.response.defer(ephemeral=True)
         vc: WavelinkPlayer = interaction.guild.voice_client
         if not vc or not vc.playing:
-            return await interaction.response.send_message(
+            return await interaction.followup.send(
                 "Nothing is currently playing.", ephemeral=True
             )
 
@@ -377,13 +399,14 @@ class MusicCommands(commands.Cog):
         embed = create_now_playing_embed(
             vc, track, is_persistent=False, bot_user=self.bot.user
         )
-        await interaction.response.send_message(embed=embed, ephemeral=True)
+        await interaction.followup.send(embed=embed, ephemeral=True)
 
     @nextcord.slash_command(name="ping", description="Check the bot's latency.")
     async def ping(self, interaction: Interaction):
         """Handles the /ping command, allowing users to check the bot's latency."""
+        await interaction.response.defer(ephemeral=True)
         latency_ms = round(self.bot.latency * 1000)
-        await interaction.response.send_message(
+        await interaction.followup.send(
             f"Pong! Latency: {latency_ms}ms", ephemeral=True
         )
 
@@ -392,6 +415,7 @@ class MusicCommands(commands.Cog):
     )
     async def help_command(self, interaction: Interaction):
         """QA: Render a line-length safe, explicitly structured help manual."""
+        await interaction.response.defer(ephemeral=True)
         help_text = (
             "**General Commands:**\n"
             "/join - Make the bot join your voice channel.\n"
@@ -417,15 +441,20 @@ class MusicCommands(commands.Cog):
             "/remove [position] - Remove a specific track from the queue. "
             "(DJ Only)\n"
         )
-        await interaction.response.send_message(help_text, ephemeral=True)
+        await interaction.followup.send(help_text, ephemeral=True)
 
     @nextcord.slash_command(
         name="join", description="Make the bot join your voice channel."
     )
     async def join(self, interaction: Interaction):
         """Handles the /join command, pulling the bot and its UI panels safely."""
+        await interaction.response.defer(ephemeral=True)
+        if not self._is_node_ready():
+            return await interaction.followup.send(
+                "**Music system is currently offline.**", ephemeral=True
+            )
         if not interaction.user.voice or not interaction.user.voice.channel:
-            await interaction.response.send_message(
+            await interaction.followup.send(
                 "You must be in a voice channel to use this command.",
                 ephemeral=True,
                 delete_after=MESSAGE_DELETE_TIMEOUT,
@@ -437,7 +466,7 @@ class MusicCommands(commands.Cog):
         guild_id = str(interaction.guild_id)
 
         if vc and vc.channel == voice_channel:
-            await interaction.response.send_message(
+            await interaction.followup.send(
                 "I'm already in your voice channel.", ephemeral=True
             )
             return
@@ -476,10 +505,11 @@ class MusicCommands(commands.Cog):
                 guild_id, wavelink.AutoPlayMode.disabled
             )
 
-        await interaction.response.send_message(
+        await interaction.followup.send(
             f"Joined **{voice_channel.name}**!", ephemeral=True
         )
 
+    # TODO: NoneType if the queue and auto_queue is empty
     @nextcord.slash_command(
         name="clearqueue", description="Clear the current music queue."
     )
@@ -489,11 +519,26 @@ class MusicCommands(commands.Cog):
         Handles the /clearqueue command,
         allowing users to clear the current music queue.
         """
+        await interaction.response.defer(ephemeral=True)
         vc: WavelinkPlayer = interaction.guild.voice_client
+
+        if not vc:
+            return await interaction.followup.send(
+                "I am not in a voice channel.", ephemeral=True
+            )
+
+        # Check if there is anything to clear at all
+        if vc.queue.is_empty and vc.auto_queue.is_empty:
+            return await interaction.followup.send(
+                "There is nothing in the queue to clear.", ephemeral=True
+            )
+
         track = list(vc.auto_queue)
 
-        if vc:
+        if not vc.queue.is_empty:
             vc.queue.clear()
+
+        if not vc.auto_queue.is_empty:
             vc.auto_queue.clear()
 
         if vc.autoplay == wavelink.AutoPlayMode.enabled:
@@ -502,7 +547,7 @@ class MusicCommands(commands.Cog):
         if vc.autoplay == wavelink.AutoPlayMode.partial:
             vc.auto_queue.put(track[0])
 
-        await interaction.response.send_message(
+        await interaction.followup.send(
             "The music queue has been cleared.", ephemeral=True
         )
 
@@ -514,15 +559,16 @@ class MusicCommands(commands.Cog):
         Handles the /shuffle command, allowing users to shuffle the current music queue
         especially the auto-queue.
         """
+        await interaction.response.defer(ephemeral=True)
         vc: WavelinkPlayer = interaction.guild.voice_client
         if not vc:
-            return await interaction.response.send_message(
+            return await interaction.followup.send(
                 "I'm not in a voice channel.", ephemeral=True
             )
 
         # CHECK BOTH: Is there anything to shuffle in either container?
         if vc.queue.is_empty and vc.auto_queue.is_empty:
-            return await interaction.response.send_message(
+            return await interaction.followup.send(
                 "The queue is currently empty, nothing to shuffle.", ephemeral=True
             )
 
@@ -538,9 +584,7 @@ class MusicCommands(commands.Cog):
             for track in auto_tracks:
                 vc.auto_queue.put(track)
 
-        await interaction.response.send_message(
-            "The queue has been shuffled.", ephemeral=True
-        )
+        await interaction.followup.send("The queue has been shuffled.", ephemeral=True)
 
     @nextcord.slash_command(
         name="voteskip", description="Vote to skip the current song."
@@ -550,32 +594,30 @@ class MusicCommands(commands.Cog):
         Handles the /voteskip command, allowing users to vote to skip the current song.
         Requires a 50% majority of human members listening in the voice channel.
         """
+        await interaction.response.defer(ephemeral=True)
         vc: WavelinkPlayer = interaction.guild.voice_client
 
         # 1. Verification: Is the bot active?
         if not vc or not (vc.playing or vc.paused):
-            return await interaction.response.send_message(
+            return await interaction.followup.send(
                 "Not playing anything to skip.", ephemeral=True
             )
 
         # 2. Verification: Is the user in the same voice channel as the bot?
         if not interaction.user.voice or interaction.user.voice.channel != vc.channel:
-            return await interaction.response.send_message(
+            return await interaction.followup.send(
                 "You must be in my voice channel to vote to skip.", ephemeral=True
             )
 
         guild_id = str(interaction.guild_id)
         user_id = interaction.user.id
 
-        # 3. Initialize the vote set for this guild if it doesn't exist
-        from ui.embeds import VOTE_SKIPS
-
         if guild_id not in VOTE_SKIPS:
             VOTE_SKIPS[guild_id] = set()
 
         # 4. Check for double voting
         if user_id in VOTE_SKIPS[guild_id]:
-            return await interaction.response.send_message(
+            return await interaction.followup.send(
                 "You have already voted to skip this song.", ephemeral=True
             )
 
@@ -594,7 +636,7 @@ class MusicCommands(commands.Cog):
         # Edge case bypass: If the user is the only listener, let them skip immediately
         if total_listeners <= 1:
             await vc.skip()
-            return await interaction.response.send_message(
+            return await interaction.followup.send(
                 "⏩ You are the only listener. Skipping track immediately!",
                 ephemeral=True,
             )
@@ -604,13 +646,13 @@ class MusicCommands(commands.Cog):
             await vc.skip()
             # Clear the vote tracking set immediately upon successful skip execution
             VOTE_SKIPS[guild_id] = set()
-            await interaction.response.send_message(
+            await interaction.followup.send(
                 f"⏩ **Vote passed!** ({current_votes}/{total_listeners} votes). "
                 f"Skipping to the next track!",
                 ephemeral=True,
             )
         else:
-            await interaction.response.send_message(
+            await interaction.followup.send(
                 f"🗳️ **Vote registered!** Your vote has been added. "
                 f"({current_votes}/{required_votes} votes required to skip).",
                 ephemeral=True,
@@ -624,6 +666,7 @@ class MusicCommands(commands.Cog):
         """
         Handles the /skip command, allowing DJs to skip the currently playing song.
         """
+        await interaction.response.defer(ephemeral=True)
         vc: WavelinkPlayer = interaction.guild.voice_client
         if vc and (vc.playing or vc.paused):
             if interaction.user.voice.channel != vc.channel:
@@ -634,11 +677,9 @@ class MusicCommands(commands.Cog):
                 )
                 return
             await vc.skip()
-            await interaction.response.send_message(
-                "Skipped the current song.", ephemeral=True
-            )
+            await interaction.followup.send("Skipped the current song.", ephemeral=True)
         else:
-            await interaction.response.send_message(
+            await interaction.followup.send(
                 "Not playing anything to skip.", ephemeral=True
             )
 
@@ -650,18 +691,19 @@ class MusicCommands(commands.Cog):
         """
         Handles the /pause command, allowing DJs to pause the currently playing song.
         """
+        await interaction.response.defer(ephemeral=True)
         vc: WavelinkPlayer = interaction.guild.voice_client
         if vc is None:
-            return await interaction.response.send_message(
+            return await interaction.followup.send(
                 "I'm not in a voice channel.", ephemeral=True
             )
         if not vc.playing:
-            return await interaction.response.send_message(
+            return await interaction.followup.send(
                 "Nothing is currently playing.", ephemeral=True
             )
 
         await vc.pause(True)
-        await interaction.response.send_message("Playback paused!", ephemeral=True)
+        await interaction.followup.send("Playback paused!", ephemeral=True)
 
     @nextcord.slash_command(
         name="resume", description="Resume the currently paused song."
@@ -671,18 +713,19 @@ class MusicCommands(commands.Cog):
         """
         Handles the /resume command, allowing DJs to resume the currently paused song.
         """
+        await interaction.response.defer(ephemeral=True)
         vc: WavelinkPlayer = interaction.guild.voice_client
         if vc is None:
-            return await interaction.response.send_message(
+            return await interaction.followup.send(
                 "I'm not in a voice channel.", ephemeral=True
             )
         if not vc.paused:
-            return await interaction.response.send_message(
+            return await interaction.followup.send(
                 "I’m not paused right now.", ephemeral=True
             )
 
         await vc.pause(False)
-        await interaction.response.send_message("Playback resumed!", ephemeral=True)
+        await interaction.followup.send("Playback resumed!", ephemeral=True)
 
     @nextcord.slash_command(
         name="stop", description="Stop playback and clear the queue."
@@ -692,9 +735,10 @@ class MusicCommands(commands.Cog):
         """
         Handles the /stop command, allowing DJs to stop playback and clear the queue.
         """
+        await interaction.response.defer(ephemeral=True)
         vc: WavelinkPlayer = interaction.guild.voice_client
         if not vc:
-            return await interaction.response.send_message(
+            return await interaction.followup.send(
                 "I'm not connected to any voice channel.", ephemeral=True
             )
 
@@ -710,7 +754,7 @@ class MusicCommands(commands.Cog):
 
         await vc.disconnect()
         await self.bot.change_presence(activity=None)
-        await interaction.response.send_message(
+        await interaction.followup.send(
             "Stopped playback and disconnected", ephemeral=True
         )
 
@@ -722,21 +766,20 @@ class MusicCommands(commands.Cog):
         """
         Handles the /volume command, allowing DJs to set the playback volume.
         """
+        await interaction.response.defer(ephemeral=True)
         vc: WavelinkPlayer = interaction.guild.voice_client
         if not vc:
-            return await interaction.response.send_message(
+            return await interaction.followup.send(
                 "I'm not connected to any voice channel.", ephemeral=True
             )
         if value < 0 or value > 100:
-            return await interaction.response.send_message(
+            return await interaction.followup.send(
                 "Please provide a volume value between 0 and 100.", ephemeral=True
             )
 
         await vc.set_volume(value)
         await update_player_message(vc, bot_user=self.bot.user)
-        await interaction.response.send_message(
-            f"Volume set to {value}%.", ephemeral=True
-        )
+        await interaction.followup.send(f"Volume set to {value}%.", ephemeral=True)
 
     @nextcord.slash_command(
         name="loop", description="Toggle looping: None, Current Track, or Full Queue."
@@ -746,9 +789,10 @@ class MusicCommands(commands.Cog):
         """
         Cycles through Wavelink QueueModes: Normal -> Loop (Track) -> Loop All (Queue).
         """
+        await interaction.response.defer(ephemeral=True)
         vc: WavelinkPlayer = interaction.guild.voice_client
         if not vc or not vc.playing:
-            return await interaction.response.send_message(
+            return await interaction.followup.send(
                 "Nothing is currently playing.", ephemeral=True
             )
 
@@ -765,7 +809,7 @@ class MusicCommands(commands.Cog):
 
         # 2. Update UI
         await update_player_message(vc, bot_user=self.bot.user)
-        await interaction.response.send_message(f"🔄 **{status}.**", ephemeral=True)
+        await interaction.followup.send(f"🔄 **{status}.**", ephemeral=True)
 
     @nextcord.slash_command(
         name="autoplay", description="Set autoplay mode for continuous music."
@@ -788,6 +832,7 @@ class MusicCommands(commands.Cog):
         Handles the /autoplay command,
         allowing DJs to set the autoplay mode for continuous music playback.
         """
+        await interaction.response.defer(ephemeral=True)
         vc: WavelinkPlayer = interaction.guild.voice_client
         mode_map = {
             "enabled": wavelink.AutoPlayMode.enabled,
@@ -797,7 +842,7 @@ class MusicCommands(commands.Cog):
         if not vc:
             # Store the preference even if not connected, but inform the user
             GUILD_AUTOPLAY_MODES[str(interaction.guild_id)] = mode_map[mode]
-            return await interaction.response.send_message(
+            return await interaction.followup.send(
                 "I'm not connected to any voice channel. Autoplay preference saved.",
                 ephemeral=True,
             )
@@ -814,7 +859,7 @@ class MusicCommands(commands.Cog):
             vc.autoplay = mode_map[mode]
             await update_player_message(vc, bot_user=self.bot.user)
 
-        await interaction.response.send_message(
+        await interaction.followup.send(
             f"Autoplay mode has been set to: **{mode.capitalize()}**", ephemeral=True
         )
 
@@ -828,9 +873,10 @@ class MusicCommands(commands.Cog):
         Handles the /remove command, allowing DJs to remove a specific track
         from either the regular queue or the automated recommendations queue.
         """
+        await interaction.response.defer(ephemeral=True)
         vc: WavelinkPlayer = interaction.guild.voice_client
         if not vc:
-            return await interaction.response.send_message(
+            return await interaction.followup.send(
                 "I'm not connected to any voice channel.", ephemeral=True
             )
 
@@ -842,13 +888,13 @@ class MusicCommands(commands.Cog):
         total_len = regular_queue_len + auto_queue_len
 
         if total_len == 0:
-            return await interaction.response.send_message(
+            return await interaction.followup.send(
                 "The music queue is currently empty.", ephemeral=True
             )
 
         # 2. Boundary bounds validation check (1-indexed)
         if position < 1 or position > total_len:
-            return await interaction.response.send_message(
+            return await interaction.followup.send(
                 f"Invalid position. "
                 f"Please choose a track number between 1 and {total_len}.",
                 ephemeral=True,
@@ -889,7 +935,7 @@ class MusicCommands(commands.Cog):
         # 5. Dynamic visual UI updates to avoid text panel drift
         await update_player_message(vc, bot_user=self.bot.user)
 
-        await interaction.response.send_message(
+        await interaction.followup.send(
             f"🗑️ Removed track: **{removed_track.title}** "
             f"from position `{position}` ({queue_type}).",
             ephemeral=True,
@@ -898,15 +944,62 @@ class MusicCommands(commands.Cog):
     @commands.Cog.listener()
     async def on_application_command_error(self, interaction: Interaction, error):
         """
-        Captures decorator permission errors and displays them
-        to the user in a user-friendly manner without terminal clutter.
+        Centralized error handler for all application commands.
+        Handles Wavelink-specific infrastructure failures
+        and Nextcord permission errors.
         """
-        # FIX: Look for nextcord.ApplicationCheckFailure instead of application_checks
+        original_error = getattr(error, "original", error)
+        vc = interaction.guild.voice_client
+
+        # 1. Handle Wavelink Infrastructure Issues
+        if isinstance(
+            original_error,
+            (
+                wavelink.WavelinkException,
+                wavelink.LavalinkException,
+                wavelink.InvalidNodeException,
+                ConnectionRefusedError,
+            ),
+        ):
+            logger.error(
+                f"Music System Error: "
+                f"{type(original_error).__name__} - {original_error}"
+            )
+            msg = get_diagnostic_message(original_error)
+
+            if vc:
+                logger.warning(
+                    f"Purging zombie player in guild "
+                    f"{interaction.guild.id} due to {type(original_error).__name__}"
+                )
+                await wavelink.Pool.close()  # Closing all nodes inside the pool
+            await self._respond(interaction, msg)
+            return
+
+        # 2. Handle connectivity (ClientConnectorError is outside wavelink hierarchy)
+        if isinstance(
+            original_error, (aiohttp.ClientConnectorError, ConnectionRefusedError)
+        ):
+            await self._respond(interaction, "The music server (Lavalink) is offline.")
+            if vc:
+                logger.warning(
+                    f"Purging zombie player in guild "
+                    f"{interaction.guild.id} due to {type(original_error).__name__}"
+                )
+                await wavelink.Pool.close()  # Closing all nodes inside the pool
+            return
+
+        # 3. Handle Permission/Check failures
         if isinstance(error, nextcord.ApplicationCheckFailure):
-            if not interaction.response.is_done():
-                await interaction.response.send_message(str(error), ephemeral=True)
-            else:
-                await interaction.followup.send(str(error), ephemeral=True)
+            await self._respond(interaction, str(error))
+            return
+
+    async def _respond(self, interaction: Interaction, msg: str):
+        """Helper to handle response dispatching."""
+        if not interaction.response.is_done():
+            await interaction.response.send_message(msg, ephemeral=True)
+        else:
+            await interaction.followup.send(msg, ephemeral=True)
 
 
 def setup(bot: commands.Bot):

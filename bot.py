@@ -6,6 +6,7 @@ from dotenv import load_dotenv
 from nextcord.ext import commands
 
 from core.logging import get_logger
+from core.setup import create_node
 
 # Load variables from the .env file
 load_dotenv()
@@ -27,12 +28,7 @@ async def on_ready():
     """Connect to Lavalink node when the bot is ready and sync commands."""
     logger.info(f"🚀 Main Engine Online: Authenticated as {bot.user}")
 
-    node = wavelink.Node(
-        uri=lavalink_uri,
-        password=lavalink_password,
-        retries=10,
-        heartbeat=60,
-    )
+    node = create_node()
     await wavelink.Pool.connect(nodes=[node], client=bot)
     await bot.sync_application_commands()
 

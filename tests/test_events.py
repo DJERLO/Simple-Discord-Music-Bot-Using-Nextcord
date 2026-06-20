@@ -286,10 +286,11 @@ async def test_on_wavelink_node_closed_cleanup():
     mock_player.guild.id = 123
 
     audio_events_cog = AudioEvents(bot_instance)
-    with patch("cogs.events.logger") as mock_logger:
-        await audio_events_cog.on_wavelink_node_closed(mock_node, [mock_player])
-        mock_logger.critical.assert_called()
-        mock_player.disconnect.assert_called_once()
+
+    with patch("wavelink.Pool.connect", new_callable=AsyncMock):
+        with patch("cogs.events.logger") as mock_logger:
+            await audio_events_cog.on_wavelink_node_closed(mock_node, [mock_player])
+            mock_logger.info.assert_called()
 
 
 @pytest.mark.asyncio

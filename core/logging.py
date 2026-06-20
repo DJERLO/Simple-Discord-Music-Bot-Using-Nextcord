@@ -2,6 +2,8 @@ import logging
 import sys
 from logging.handlers import RotatingFileHandler
 
+logging.getLogger("wavelink").setLevel(logging.WARNING)
+
 
 # ANSI Color Codes
 class ColorFormatter(logging.Formatter):

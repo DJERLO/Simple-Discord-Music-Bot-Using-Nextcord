@@ -6,6 +6,7 @@ from nextcord.ext import commands
 
 from cogs.music_commands import WavelinkPlayer
 from core.logging import get_logger
+from core.setup import recover_lavalink_session
 from ui.embeds import (
     ACTIVE_PLAYERS,
     AUTO_DISCONNECT_TASKS,
@@ -83,7 +84,7 @@ class AudioEvents(commands.Cog):
         )
 
         # Put all songs to history to allow history playback
-        player.queue.history.put(track)
+        await player.queue.history.put(track)
         logger.info(f"Now Playing: {track.title} by {track.author}")
         await self.bot.change_presence(
             activity=nextcord.Activity(
@@ -273,36 +274,6 @@ class AudioEvents(commands.Cog):
         logger.info(f"Lavalink {payload.node!r} is back online and ready!")
 
     @commands.Cog.listener()
-    async def on_wavelink_node_closed(
-        self, node: wavelink.Node, disconnected: list[wavelink.Player]
-    ):
-        """
-        Called when a node has been closed and cleaned up.
-
-        Attributes
-        ----------
-        node : :class:`wavelink.Node`
-            See Also: :class:`wavelink.Node`
-        disconnected : list[ :class:`wavelink.Player`]
-            See Also: list[ :class:`wavelink.Player`]
-        """
-        # 1. Log the failure for infrastructure monitoring
-        logger.critical(
-            f"Lavalink Node {node.id} went offline. "
-            f"{len(disconnected)} players affected."
-        )
-
-        # 2. Iterate through the orphaned players and handle them
-        for player in disconnected:
-            try:
-                await player.disconnect()
-
-            except Exception as e:
-                logger.error(
-                    f"Failed to clean up player for guild {player.guild.id}: {e}"
-                )
-
-    @commands.Cog.listener()
     async def on_wavelink_node_disconnected(
         self,
         payload: wavelink.NodeDisconnectedEventPayload,
@@ -330,6 +301,25 @@ class AudioEvents(commands.Cog):
 
         """
         logger.info(f"{payload.node} is disconnected")
+
+    @commands.Cog.listener()
+    async def on_wavelink_node_closed(
+        self, node: wavelink.Node, disconnected: list[wavelink.Player]
+    ):
+        """
+        Called when a node has been closed and cleaned up.
+
+        Attributes
+        ----------
+        node : :class:`wavelink.Node`
+            See Also: :class:`wavelink.Node`
+        disconnected : list[ :class:`wavelink.Player`]
+            See Also: list[ :class:`wavelink.Player`]
+        """
+        # 1. Log the failure for infrastructure monitoring
+
+        logger.info(f"Node {node.identifier} closed.")
+        await recover_lavalink_session(self.bot, disconnected)
 
     @commands.Cog.listener()
     async def on_wavelink_stats_update(self, payload: wavelink.StatsEventPayload):
