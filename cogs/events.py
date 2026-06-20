@@ -62,6 +62,60 @@ class AudioEvents(commands.Cog):
 
     def __init__(self, bot: commands.Bot):
         self.bot = bot
+        self.inactive_timeout = 300
+
+    @commands.Cog.listener()
+    async def on_voice_state_update(
+        self,
+        member: nextcord.Member,
+        before: nextcord.VoiceState,
+        after: nextcord.VoiceState,
+    ):
+        """
+        Monitors voice channel activity to manage the Wavelink player's
+        inactivity timeout.
+
+        This listener automatically triggers when a member joins
+        or leaves a voice channel.
+        It adjusts the 'inactive_timeout' property of the WavelinkPlayer
+        to ensure the bot disconnects automatically when the channel
+        is empty, and cancels any pending disconnection
+        if a human joins the channel.
+
+        Attributes
+        ----------
+        member : nextcord.Member
+            The member whose voice state changed.
+        before : nextcord.VoiceState
+            The voice state of the member prior to the change.
+        after : nextcord.VoiceState
+            The voice state of the member after the change.
+        """
+        if member.id == self.bot.user.id:
+            return
+
+        vc: WavelinkPlayer = member.guild.voice_client
+
+        if not vc or not vc.channel:
+            return
+
+        # 2. Check if a human joined the bot's channel
+        if after.channel == vc.channel and before.channel != vc.channel:
+            # HUMAN JOINED: Cancel the timeout immediately
+            vc.inactive_timeout = None  # Now you can access inactive_timeout directly
+            logger.info(f"Human joined {vc.channel.name}. Inactivity timer cancelled.")
+
+        # 3. Check if a human left the bot's channel
+        elif before.channel == vc.channel and after.channel != vc.channel:
+            human_members = [m for m in vc.channel.members if not m.bot]
+
+            # If the channel is now empty: Start the timeout
+            if not human_members:
+                vc.inactive_timeout = self.inactive_timeout
+                logger.info(
+                    f"Channel {vc.channel.name} emptied. "
+                    f"Inactivity timer set to {self.inactive_timeout}."
+                )
 
     @commands.Cog.listener()
     async def on_wavelink_track_start(self, payload: wavelink.TrackStartEventPayload):
@@ -84,7 +138,7 @@ class AudioEvents(commands.Cog):
         )
 
         # Put all songs to history to allow history playback
-        await player.queue.history.put(track)
+        player.queue.history.put(track)
         logger.info(f"Now Playing: {track.title} by {track.author}")
         await self.bot.change_presence(
             activity=nextcord.Activity(

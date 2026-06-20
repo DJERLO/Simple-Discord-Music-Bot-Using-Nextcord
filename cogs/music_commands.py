@@ -120,7 +120,6 @@ class MusicCommands(commands.Cog):
 
     def __init__(self, bot: commands.Bot):
         self.bot = bot
-        self.lavalink_node = None
 
     def _is_node_ready(self):
         nodes = wavelink.Pool.nodes
@@ -157,7 +156,6 @@ class MusicCommands(commands.Cog):
 
         if not vc:
             vc = await voice_channel.connect(cls=WavelinkPlayer)
-            vc.inactive_timeout = 300
             vc.autoplay = GUILD_AUTOPLAY_MODES.get(
                 str(interaction.guild_id), wavelink.AutoPlayMode.disabled
             )
@@ -198,7 +196,6 @@ class MusicCommands(commands.Cog):
                     logger.error(f"Error disconnecting from voice channel: {e}")
                     pass
                 vc = await voice_channel.connect(cls=WavelinkPlayer)
-                vc.inactive_timeout = 300
 
         try:
             tracks = await wavelink.Playable.search(song)
