@@ -232,7 +232,7 @@ async def test_on_wavelink_track_start_state_updates(mock_create_embed):
     mock_payload.player = mock_player
     mock_payload.player.queue = MagicMock(spec=wavelink.Queue)
     mock_player.queue.history = MagicMock(spec=wavelink.Queue)
-    mock_player.queue.history.put = AsyncMock()  # Needed so history.put() doesn't fail
+    mock_player.queue.history.put = MagicMock()
 
     mock_payload.track = mock_track
     mock_create_embed.return_value = MagicMock()

@@ -13,7 +13,6 @@ from ui.embeds import (
     MESSAGE_DELETE_TIMEOUT,
     VOTE_SKIPS,
     create_now_playing_embed,
-    format_time,
 )
 
 logger = get_logger(__name__)
@@ -129,7 +128,7 @@ class AudioEvents(commands.Cog):
             See Also: :class:`wavelink.TrackStartEventPayload`
         """
         player = payload.player
-        track = payload.track
+        track: wavelink.Playable = payload.track
         guild_id = str(player.guild.id)
         VOTE_SKIPS[guild_id] = set()  # Reset vote skips for the new track
 
@@ -140,15 +139,18 @@ class AudioEvents(commands.Cog):
         # Put all songs to history to allow history playback
         player.queue.history.put(track)
         logger.info(f"Now Playing: {track.title} by {track.author}")
+
+        activity = nextcord.Activity(
+            application_id=self.bot.user.id,
+            type=nextcord.ActivityType.listening,
+            name=f"{track.title}",
+            state=f"{track.author}",
+            timestamps = {"start": int(time.time()), "end": int(time.time() + (track.length // 1000))},
+        )
+
         await self.bot.change_presence(
-            activity=nextcord.Activity(
-                type=nextcord.ActivityType.listening,
-                name=f"{track.title} by {track.author} [{format_time(track.length)}]",
-                timestamps={
-                    "start": int(time.time()),
-                    "end": int(time.time() + (track.length // 1000)),
-                },
-            )
+            activity=activity,
+            status=nextcord.Status.online,
         )
 
         # Update or send the player interface message
@@ -226,6 +228,8 @@ class AudioEvents(commands.Cog):
         # 5. Execute playback or handle clean disconnects
         if next_track:
             await player.play(next_track, **kwargs)
+            player.inactive_timeout = 0
+            logger.info(f"Playing next track: {next_track.title}")
         else:
             # 6. Handle Autoplay transition
             if player.autoplay == wavelink.AutoPlayMode.enabled:
@@ -241,7 +245,8 @@ class AudioEvents(commands.Cog):
                 ACTIVE_PLAYERS[guild_id] = None
 
             logger.info(f"Queue empty in guild {guild_id}. Player is now idling.")
-            await self.bot.change_presence(activity=None)
+            player.inactive_timeout = self.inactive_timeout # 5 minutes
+            await self.bot.change_presence(activity=None, status=nextcord.Status.idle)
 
     @commands.Cog.listener()
     async def on_wavelink_track_stuck(self, payload: wavelink.TrackStuckEventPayload):
@@ -252,7 +257,7 @@ class AudioEvents(commands.Cog):
         Atributes
         ---------
         payload : :class:`wavelink.TrackStuckEventPayload`
-
+            See Also: :class:`wavelink.TrackStuckEventPayload`
         """
         player = payload.player
         logger.warning(
@@ -352,7 +357,6 @@ class AudioEvents(commands.Cog):
         ----------
         payload : :class:`wavelink.NodeDisconnectedEventPayload`
             See Also: :class:`wavelink.NodeDisconnectedEventPayload`
-
         """
         logger.info(f"{payload.node} is disconnected")
 

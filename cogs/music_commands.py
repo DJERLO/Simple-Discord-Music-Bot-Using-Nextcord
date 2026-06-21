@@ -37,7 +37,7 @@ class WavelinkPlayer(wavelink.Player, nextcord.VoiceProtocol):
     ----------
     inactive_timeout : int
         The duration in seconds the bot will wait in an empty or inactive voice channel
-        before triggering an automatic disconnect event (defaults to 300 seconds).
+        before triggering an automatic disconnect event.
 
     Methods
     -------
@@ -48,7 +48,7 @@ class WavelinkPlayer(wavelink.Player, nextcord.VoiceProtocol):
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        self.inactive_timeout = 300  # 5 minutes in seconds
+        self.inactive_timeout = None
 
     @property
     def last_played_track(self) -> wavelink.Playable | None:
@@ -497,7 +497,6 @@ class MusicCommands(commands.Cog):
                     ACTIVE_PLAYERS[guild_id] = new_msg
         else:
             vc = await voice_channel.connect(cls=WavelinkPlayer)
-            vc.inactive_timeout = 300
             vc.autoplay = GUILD_AUTOPLAY_MODES.get(
                 guild_id, wavelink.AutoPlayMode.disabled
             )
@@ -538,10 +537,10 @@ class MusicCommands(commands.Cog):
         if not vc.auto_queue.is_empty:
             vc.auto_queue.clear()
 
-        if vc.autoplay == wavelink.AutoPlayMode.enabled:
-            vc.auto_queue.put(track[0])
-
-        if vc.autoplay == wavelink.AutoPlayMode.partial:
+        if track and vc.autoplay in (
+            wavelink.AutoPlayMode.enabled,
+            wavelink.AutoPlayMode.partial,
+        ):
             vc.auto_queue.put(track[0])
 
         await interaction.followup.send(

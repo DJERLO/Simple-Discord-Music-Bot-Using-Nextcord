@@ -20,7 +20,7 @@ logger = get_logger(__name__)
 intents = nextcord.Intents.default()
 intents.message_content = True
 
-bot = commands.Bot(command_prefix="/", intents=intents)
+bot = commands.Bot(command_prefix="/", intents=intents, status=nextcord.Status.idle)
 
 
 @bot.event

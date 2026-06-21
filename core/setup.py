@@ -1,6 +1,7 @@
 import os
 
 import wavelink
+from nextcord.ext import commands
 
 from core.logging import get_logger
 
@@ -11,7 +12,14 @@ LAVALINK_PASSWORD = os.getenv("LAVALINK_PASSWORD", "youshallnotpass")
 
 
 def create_node() -> wavelink.Node:
-    """Creates and returns a configured Wavelink node."""
+    """
+    Creates and returns a configured Wavelink node.
+
+    Returns
+    -------
+    :class:`wavelink.Node`
+        A configured Wavelink node
+    """
     return wavelink.Node(
         uri=LAVALINK_URI,
         password=LAVALINK_PASSWORD,
@@ -20,26 +28,41 @@ def create_node() -> wavelink.Node:
     )
 
 
-async def recover_lavalink_session(bot, players: list):
+async def recover_lavalink_session(bot: commands.Bot, players: list[wavelink.Player]):
     """
     Establish a fresh node and migrate orphaned players to it.
+
+    Attributes
+    ----------
+    bot : :class:`commands.Bot`
+        The bot instance.
+    players : list[ :class:`wavelink.Player`]
+        The players to migrate.
+
+    Returns
+    -------
+    None
+
     """
-
+    connected_node = None
     if wavelink.Pool.nodes:
-        # If we already have nodes, don't keep spamming connections
-        if any(
-            n.status == wavelink.NodeStatus.CONNECTED
-            for n in wavelink.Pool.nodes.values()
-        ):
-            logger.info("Node already exists and is healthy. Skipping recovery.")
-            return
+        connected_node = next(
+            (
+                node
+                for node in wavelink.Pool.nodes.values()
+                if node.status == wavelink.NodeStatus.CONNECTED
+            ),
+            None,
+        )
 
-    new_node = create_node()
-    await wavelink.Pool.connect(nodes=[new_node], client=bot)
+    if connected_node is None:
+        new_node = create_node()
+        await wavelink.Pool.connect(nodes=[new_node], client=bot)
+        connected_node = new_node
 
     for player in players:
         try:
-            await player.switch_node(new_node)
+            await player.switch_node(connected_node)
             logger.info(f"Migrated guild {player.guild.id} to new node.")
         except Exception as e:
             logger.error(f"Migration failed for {player.guild.id}: {e}. Disconnecting.")
@@ -47,7 +70,19 @@ async def recover_lavalink_session(bot, players: list):
 
 
 def get_diagnostic_message(error: Exception) -> str:
-    """Generates a standardized diagnostic message for the music system."""
+    """
+    Generates a standardized diagnostic message for the music system.
+
+    Attributes
+    ----------
+    error : :class:`Exception`
+        The error that triggered the diagnostic message.
+
+    Returns
+    -------
+    str
+        The generated diagnostic message.
+    """
     nodes = wavelink.Pool.nodes
     connected_node = wavelink.Pool.get_node()
 

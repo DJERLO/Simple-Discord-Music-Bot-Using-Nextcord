@@ -26,7 +26,10 @@ def get_track_artwork(track: wavelink.Playable) -> str:
 
 
 def create_now_playing_embed(
-    player, track: wavelink.Playable, is_persistent: bool = True, bot_user=None
+    player: wavelink.Player,
+    track: wavelink.Playable,
+    is_persistent: bool = True,
+    bot_user=None,
 ) -> nextcord.Embed:
     """
     Centralized helper to create the Now Playing embed for events and commands.
