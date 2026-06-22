@@ -123,37 +123,6 @@ async def test_patch_v101_migration_helper_executes_clean_slate(mock_active_play
 
 
 @pytest.mark.asyncio
-async def test_on_wavelink_track_end_partial_empty_auto_queue_fallback():
-    """
-    INTEGRATION QA TEST:
-    Assures partial autoplay triggers seed re-population if empty.
-    """
-    mock_payload = MagicMock(spec=wavelink.TrackEndEventPayload)
-    mock_payload.reason = "finished"
-
-    mock_player = AsyncMock(spec=WavelinkPlayer)
-    mock_player.guild.id = 555444333
-    mock_player.autoplay = wavelink.AutoPlayMode.partial
-
-    mock_player.queue = MagicMock(spec=wavelink.Queue)
-    mock_player.queue.is_empty = True
-    mock_player.auto_queue = MagicMock(spec=wavelink.Queue)
-    mock_player.auto_queue.is_empty = True
-
-    mock_seed_track = MagicMock(spec=wavelink.Playable)
-    mock_payload.track = mock_seed_track
-    mock_payload.player = mock_player
-
-    audio_events_cog = AudioEvents(bot_instance)
-    await audio_events_cog.on_wavelink_track_end(mock_payload)
-
-    mock_player.play.assert_called_once_with(
-        mock_seed_track, populate=True, max_populate=5
-    )
-    mock_player.disconnect.assert_not_called()
-
-
-@pytest.mark.asyncio
 async def test_on_wavelink_inactive_player_cleans_up():
     """
     Verifies that on_wavelink_inactive_player clears queue, message,
@@ -170,7 +139,7 @@ async def test_on_wavelink_inactive_player_cleans_up():
     mock_player.channel.name = "Music Channel"
     # 0 humans
     mock_player.channel.members = [MagicMock(bot=True)]
-
+    mock_player.current = None
     mock_player.queue = MagicMock()
 
     mock_embed_msg = AsyncMock(spec=nextcord.Message)
@@ -195,6 +164,8 @@ async def test_on_wavelink_inactive_player_clears_presence():
     bot_instance.change_presence = AsyncMock()
 
     mock_player = AsyncMock(spec=WavelinkPlayer)
+    mock_player.channel = MagicMock()
+    mock_player.current = None
     mock_player.queue = MagicMock()
     mock_player.guild = MagicMock()
     mock_player.guild.id = 12345

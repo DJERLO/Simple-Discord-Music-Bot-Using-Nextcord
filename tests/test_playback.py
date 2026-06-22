@@ -151,6 +151,7 @@ async def test_nowplaying_command_playing(cog):
     mock_player = AsyncMock(spec=WavelinkPlayer)
     mock_player.playing = True
     mock_player.position = 60000
+    mock_player.queue = AsyncMock(spec=wavelink.Queue)
 
     mock_track = MagicMock(spec=wavelink.Playable)
     mock_track.title = "Test Song"
@@ -315,7 +316,7 @@ async def test_autoplay_command_guard_when_disconnected(cog):
     interaction.followup.send = AsyncMock()
     interaction.guild.voice_client = None
 
-    await cog.autoplay.callback(cog, interaction, mode="partial")
+    await cog.autoplay.callback(cog, interaction, mode="enabled")
 
     interaction.followup.send.assert_called_once_with(
         "I'm not connected to any voice channel. Autoplay preference saved.",
@@ -328,7 +329,6 @@ async def test_autoplay_command_guard_when_disconnected(cog):
     "mode_str, expected_enum",
     [
         ("enabled", wavelink.AutoPlayMode.enabled),
-        ("partial", wavelink.AutoPlayMode.partial),
         ("disabled", wavelink.AutoPlayMode.disabled),
     ],
 )
@@ -361,6 +361,7 @@ async def test_autoplay_command_and_global_persistence_mapping(
 async def test_update_player_message_ignores_api_errors(cog):
     """STRESS TEST: Ensures bot doesn't crash if the persistent message edit fails."""
     mock_player = AsyncMock(spec=WavelinkPlayer)
+    mock_player.queue = AsyncMock(spec=wavelink.Queue)
     mock_player.guild.id = 123
     mock_player.current = MagicMock(spec=wavelink.Playable)
 

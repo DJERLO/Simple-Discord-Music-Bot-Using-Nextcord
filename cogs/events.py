@@ -28,6 +28,12 @@ class AudioEvents(commands.Cog):
     ----------
     bot : Instance of :class:`nextcord.ext.commands.Bot`
         The main bot instance.
+    inactive_timeout : int
+        The number of seconds to wait before automatically disconnecting
+        from an inactive voice channel.
+    inactive_channel_tokens : int
+        The number of songs to play before automatically disconnecting
+        from an inactive voice channel.
 
     Methods
     -------
@@ -54,7 +60,8 @@ class AudioEvents(commands.Cog):
     on_wavelink_stats_update(payload):
         Called when the stats OP is received by Lavalink.
     on_wavelink_inactive_player(player):
-        Triggered when the inactive_timeout countdown expires.
+        - Triggered when the inactive_timeout countdown expires or
+        - Triggered when the inactive_channel_tokens limit is reached to 0.
     on_wavelink_player_update(payload):
         Called when the playerUpdate OP is received from Lavalink.
     """
@@ -62,6 +69,7 @@ class AudioEvents(commands.Cog):
     def __init__(self, bot: commands.Bot):
         self.bot = bot
         self.inactive_timeout = 300
+        self.inactive_channel_tokens = 3
 
     @commands.Cog.listener()
     async def on_voice_state_update(
@@ -101,7 +109,8 @@ class AudioEvents(commands.Cog):
         # 2. Check if a human joined the bot's channel
         if after.channel == vc.channel and before.channel != vc.channel:
             # HUMAN JOINED: Cancel the timeout immediately
-            vc.inactive_timeout = None  # Now you can access inactive_timeout directly
+            vc.inactive_timeout = None
+            vc.inactive_channel_tokens = None
             logger.info(f"Human joined {vc.channel.name}. Inactivity timer cancelled.")
 
         # 3. Check if a human left the bot's channel
@@ -111,6 +120,7 @@ class AudioEvents(commands.Cog):
             # If the channel is now empty: Start the timeout
             if not human_members:
                 vc.inactive_timeout = self.inactive_timeout
+                vc.inactive_channel_tokens = self.inactive_channel_tokens
                 logger.info(
                     f"Channel {vc.channel.name} emptied. "
                     f"Inactivity timer set to {self.inactive_timeout}."
@@ -131,7 +141,6 @@ class AudioEvents(commands.Cog):
         track: wavelink.Playable = payload.track
         guild_id = str(player.guild.id)
         VOTE_SKIPS[guild_id] = set()  # Reset vote skips for the new track
-
         embed = create_now_playing_embed(
             player, track, is_persistent=True, bot_user=self.bot.user
         )
@@ -201,55 +210,48 @@ class AudioEvents(commands.Cog):
             return
 
         # 4. Determine the next track to play
-        # (checking user queue, then partial auto_queue)
         next_track = None
         kwargs = {}
 
-        if not player.queue.is_empty:
-            next_track = player.queue.get()
-            if player.autoplay == wavelink.AutoPlayMode.partial:
-                kwargs["populate"] = True
-                kwargs["max_populate"] = 5
-        elif player.autoplay == wavelink.AutoPlayMode.partial:
-            # If auto_queue ALREADY has songs, grab the next one
-            if not player.auto_queue.is_empty:
-                next_track = player.auto_queue.get()
-                kwargs["populate"] = True
-                kwargs["max_populate"] = 5
-            else:
-                # BUG FIX:
-                # auto_queue is empty because it was skipped early or hadn't filled yet!
+        # If autoplay is enabled, just play the next track from the auto-queue.
+        if player.autoplay == wavelink.AutoPlayMode.enabled:
+            logger.info(
+                f"Guild {guild_id}: playing next track from auto-queue.\n"
+                f"Current track: {payload.track.title} by {payload.track.author}"
+            )
+            return
+
+        # If autoplay is disabled, check if the queue is empty.
+        if player.autoplay == wavelink.AutoPlayMode.disabled:
+            # If the queue is empty, set the inactivity timeout
+            if player.queue.is_empty:
+                logger.info(f"Queue empty in guild {guild_id}. Player is now idling.")
                 logger.info(
-                    f"Guild {guild_id}: Auto-queue empty on track end. "
-                    f"Force populating recommendations."
+                    f"No songs left in queue. "
+                    f"Inactivity timer set to {self.inactive_timeout}."
                 )
+                player.inactive_timeout = self.inactive_timeout
+                await self.bot.change_presence(
+                    activity=None, status=nextcord.Status.idle
+                )
+
+                msg = ACTIVE_PLAYERS.get(guild_id)
+                if msg:
+                    try:
+                        await msg.delete()
+                    except Exception:
+                        pass
+                    ACTIVE_PLAYERS[guild_id] = None
+
+                return
+            # If the queue is not empty, play the next track
+            if not player.queue.is_empty:
+                next_track = player.queue.get()
                 kwargs["populate"] = True
-                kwargs["max_populate"] = 5
-                await player.play(payload.track, **kwargs)
+                kwargs["max_populate"] = 10
+                logger.info(f"Playing next track: {next_track.title}")
+                await player.play(next_track, **kwargs)
                 return
-
-        # 5. Execute playback or handle clean disconnects
-        if next_track:
-            await player.play(next_track, **kwargs)
-            player.inactive_timeout = 0
-            logger.info(f"Playing next track: {next_track.title}")
-        else:
-            # 6. Handle Autoplay transition
-            if player.autoplay == wavelink.AutoPlayMode.enabled:
-                return
-
-            # Only clean up the interface if the queue is empty AND autoplay is disabled
-            msg = ACTIVE_PLAYERS.get(guild_id)
-            if msg:
-                try:
-                    await msg.delete()
-                except Exception:
-                    pass
-                ACTIVE_PLAYERS[guild_id] = None
-
-            logger.info(f"Queue empty in guild {guild_id}. Player is now idling.")
-            player.inactive_timeout = self.inactive_timeout  # 5 minutes
-            await self.bot.change_presence(activity=None, status=nextcord.Status.idle)
 
     @commands.Cog.listener()
     async def on_wavelink_track_stuck(self, payload: wavelink.TrackStuckEventPayload):

@@ -35,11 +35,14 @@ class WavelinkPlayer(wavelink.Player, nextcord.VoiceProtocol):
 
     Attributes
     ----------
+    inactive_channel_tokens : int
+        The number of consecutive empty or inactive voice channel tokens
+        before triggering an automatic disconnect event. (Default: 3)
     inactive_timeout : int
         The duration in seconds the bot will wait in an empty or inactive voice channel
         before triggering an automatic disconnect event.
 
-    Methods
+    Properties
     -------
     last_played_track : :class:`wavelink.Playable` | None
         Property that retrieves the track immediately preceding the current track
@@ -48,7 +51,8 @@ class WavelinkPlayer(wavelink.Player, nextcord.VoiceProtocol):
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        self.inactive_timeout = None
+        self.inactive_channel_tokens = None  # type: ignore
+        self.inactive_timeout = 300
 
     @property
     def last_played_track(self) -> wavelink.Playable | None:
@@ -84,7 +88,6 @@ class WavelinkPlayer(wavelink.Player, nextcord.VoiceProtocol):
             return self.queue.history[-1]
 
 
-# TODO: Defer all commands with `await interaction.response.defer(ephemeral=True)`
 class MusicCommands(commands.Cog):
     """
     Cog that contains all slash commands related to music playback,
@@ -259,9 +262,7 @@ class MusicCommands(commands.Cog):
             kwargs = {}
             if vc.autoplay == wavelink.AutoPlayMode.enabled:
                 kwargs["populate"] = True
-            if vc.autoplay == wavelink.AutoPlayMode.partial:
-                kwargs["populate"] = True
-                kwargs["max_populate"] = 5
+                kwargs["max_populate"] = 10
             await vc.play(track, add_history=True, **kwargs)
 
     @nextcord.slash_command(name="previous", description="Play the previous song")
@@ -308,6 +309,9 @@ class MusicCommands(commands.Cog):
 
         # Play the Previous Track but dont put it on history
         # otherwise duplication happens
+        logger.info(
+            f"User: {interaction.user} Switching to previous track: {prev_track}"
+        )
         await vc.play(prev_track, add_history=False)
         # Update the embed now playing track
         await update_player_message(vc, bot_user=self.bot.user)
@@ -326,8 +330,6 @@ class MusicCommands(commands.Cog):
 
         Logic for Autoplay modes in the queue view:
         - Enabled: Shows the entire auto-queue populated by Lavalink recommendations.
-        - Partial: We manually restrict display to the next 5 tracks,
-                   providing a 'preview' window without flooding the UI.
         - Disabled: No autoplay tracks are shown.
         """
         await interaction.response.defer(ephemeral=True)
@@ -344,19 +346,8 @@ class MusicCommands(commands.Cog):
             )
 
         if vc.autoplay == wavelink.AutoPlayMode.enabled:
-            for track in vc.auto_queue:
-                songs_list.append(
-                    (
-                        track.uri,
-                        f"✨ {track.title} (Auto-Queue)",
-                        get_track_artwork(track),
-                        track.length / 1000,
-                    )
-                )
-
-        # Partial Only Shows 5 Songs
-        if vc.autoplay == wavelink.AutoPlayMode.partial and not vc.auto_queue.is_empty:
-            for track in list(vc.auto_queue)[:5]:
+            auto_tracks = list(vc.auto_queue)
+            for track in auto_tracks[:10]:
                 songs_list.append(
                     (
                         track.uri,
@@ -537,10 +528,7 @@ class MusicCommands(commands.Cog):
         if not vc.auto_queue.is_empty:
             vc.auto_queue.clear()
 
-        if track and vc.autoplay in (
-            wavelink.AutoPlayMode.enabled,
-            wavelink.AutoPlayMode.partial,
-        ):
+        if track and vc.autoplay.enabled:
             vc.auto_queue.put(track[0])
 
         await interaction.followup.send(
@@ -672,6 +660,10 @@ class MusicCommands(commands.Cog):
                     delete_after=MESSAGE_DELETE_TIMEOUT,
                 )
                 return
+            logger.info(
+                f"DJ {interaction.user.name} skipped the song.\n"
+                f"Song: {vc.current.title} - {vc.current.author}"
+            )
             await vc.skip()
             await interaction.followup.send("Skipped the current song.", ephemeral=True)
         else:
@@ -821,7 +813,6 @@ class MusicCommands(commands.Cog):
             description="Select the autoplay behavior",
             choices={
                 "Enabled": "enabled",
-                "Partial": "partial",
                 "Disabled": "disabled",
             },
         ),
@@ -834,7 +825,6 @@ class MusicCommands(commands.Cog):
         vc: WavelinkPlayer = interaction.guild.voice_client
         mode_map = {
             "enabled": wavelink.AutoPlayMode.enabled,
-            "partial": wavelink.AutoPlayMode.partial,
             "disabled": wavelink.AutoPlayMode.disabled,
         }
         if not vc:
@@ -847,7 +837,6 @@ class MusicCommands(commands.Cog):
 
         mode_map = {
             "enabled": wavelink.AutoPlayMode.enabled,
-            "partial": wavelink.AutoPlayMode.partial,
             "disabled": wavelink.AutoPlayMode.disabled,
         }
 
@@ -856,7 +845,7 @@ class MusicCommands(commands.Cog):
         if vc:
             vc.autoplay = mode_map[mode]
             await update_player_message(vc, bot_user=self.bot.user)
-
+        logger.info(f"Autoplay mode set to: {mode}")
         await interaction.followup.send(
             f"Autoplay mode has been set to: **{mode.capitalize()}**", ephemeral=True
         )

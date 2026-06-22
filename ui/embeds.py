@@ -74,16 +74,23 @@ def create_now_playing_embed(
     embed.add_field(name="Duration", value=format_time(track.length), inline=True)
 
     # Status Indicators
-    loop_status = "✅ Enabled" if getattr(player, "loop", False) else "❌ Disabled"
+    loop_states = {
+        wavelink.QueueMode.normal: "➡️ Normal",
+        wavelink.QueueMode.loop: "🔂 Track",
+        wavelink.QueueMode.loop_all: "🔁 Queue",
+    }
     autoplay_mode = player.autoplay
     ap_label = {
         wavelink.AutoPlayMode.enabled: "✅ Full",
-        wavelink.AutoPlayMode.partial: "✨ Partial",
         wavelink.AutoPlayMode.disabled: "❌ Disabled",
     }.get(autoplay_mode, "Unknown")
 
     embed.add_field(name="Volume", value=f"{player.volume}%", inline=True)
-    embed.add_field(name="Looping", value=loop_status, inline=True)
+    embed.add_field(
+        name="Looping",
+        value=loop_states.get(player.queue.mode, "➡️ Normal"),
+        inline=True,
+    )
     embed.add_field(name="Autoplay", value=ap_label, inline=True)
 
     artwork = get_track_artwork(track)

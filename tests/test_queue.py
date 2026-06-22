@@ -75,20 +75,23 @@ async def test_shuffle_command_success(cog):
 @pytest.mark.asyncio
 @patch("cogs.music_commands.QueueSongList")
 async def test_queue_command_enforces_recommendation_limit(mock_view_class, cog):
-    """STRESS TEST:
-    Confirms UI slices recommendations even if internal queue is flooded."""
+    """
+    STRESS TEST:
+    Confirms UI slices recommendations even if internal queue is flooded.
+    """
     interaction = AsyncMock(spec=nextcord.Interaction)
     interaction.response.defer = AsyncMock()
     interaction.followup.send = AsyncMock()
-    interaction.original_message = AsyncMock()
+    mock_msg = AsyncMock(spec=nextcord.Message)
+    interaction.original_message = AsyncMock(return_value=mock_msg)
+
     interaction.guild_id = 123
     mock_player = AsyncMock(spec=WavelinkPlayer)
-    mock_player.autoplay = wavelink.AutoPlayMode.partial
+    mock_player.autoplay = wavelink.AutoPlayMode.enabled
     mock_player.queue = []
-    mock_player.auto_queue = MagicMock(spec=wavelink.Queue)
-    mock_player.auto_queue.is_empty = False
+
     tracks = [MagicMock(spec=wavelink.Playable) for _ in range(20)]
-    mock_player.auto_queue.__iter__.return_value = iter(tracks)
+    mock_player.auto_queue = tracks
 
     interaction.guild.voice_client = mock_player
 
@@ -96,8 +99,9 @@ async def test_queue_command_enforces_recommendation_limit(mock_view_class, cog)
 
     args, _ = mock_view_class.call_args
     songs_list = args[0]
-    # Should be exactly 5 recommendations displayed
-    assert len(songs_list) == 5
+
+    # This will now pass once you implement the slice in music_commands.py
+    assert len(songs_list) == 10
 
 
 @pytest.mark.asyncio
