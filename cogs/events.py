@@ -145,7 +145,10 @@ class AudioEvents(commands.Cog):
             type=nextcord.ActivityType.listening,
             name=f"{track.title}",
             state=f"{track.author}",
-            timestamps = {"start": int(time.time()), "end": int(time.time() + (track.length // 1000))},
+            timestamps={
+                "start": int(time.time()),
+                "end": int(time.time() + (track.length // 1000)),
+            },
         )
 
         await self.bot.change_presence(
@@ -245,7 +248,7 @@ class AudioEvents(commands.Cog):
                 ACTIVE_PLAYERS[guild_id] = None
 
             logger.info(f"Queue empty in guild {guild_id}. Player is now idling.")
-            player.inactive_timeout = self.inactive_timeout # 5 minutes
+            player.inactive_timeout = self.inactive_timeout  # 5 minutes
             await self.bot.change_presence(activity=None, status=nextcord.Status.idle)
 
     @commands.Cog.listener()

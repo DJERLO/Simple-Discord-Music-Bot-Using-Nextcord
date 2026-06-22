@@ -699,6 +699,7 @@ class MusicCommands(commands.Cog):
             )
 
         await vc.pause(True)
+        await update_player_message(vc, bot_user=self.bot.user)
         await interaction.followup.send("Playback paused!", ephemeral=True)
 
     @nextcord.slash_command(
@@ -721,6 +722,7 @@ class MusicCommands(commands.Cog):
             )
 
         await vc.pause(False)
+        await update_player_message(vc, bot_user=self.bot.user)
         await interaction.followup.send("Playback resumed!", ephemeral=True)
 
     @nextcord.slash_command(

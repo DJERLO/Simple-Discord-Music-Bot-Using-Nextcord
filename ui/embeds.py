@@ -36,11 +36,33 @@ def create_now_playing_embed(
     If is_persistent is True, the embed is styled for the main player message with a
     larger image. If False, it's styled for ephemeral updates (like pause/resume)
     with a thumbnail.
+
+    Arguments
+    ---------
+    player : wavelink.Player
+        The player object for the guild.
+    track : wavelink.Playable
+        The track currently playing in the player.
+    is_persistent : bool, optional
+        Whether the embed should be styled for the main player message.
+    bot_user : nextcord.User, optional
+        The bot's user object.
+
+    Returns
+    -------
+    nextcord.Embed
+        The Now Playing embed.
     """
+
+    if player.paused:
+        color = nextcord.Color.orange()
+    else:
+        color = nextcord.Color.green()
+
     embed = nextcord.Embed(
         title="💿 Now Playing" if is_persistent else "💿 Currently Playing",
         description=f"[{track.title}]({track.uri})",
-        color=nextcord.Color.green() if is_persistent else nextcord.Color.blue(),
+        color=color if is_persistent else nextcord.Color.blue(),
     )
 
     embed.add_field(name="Artist", value=track.author, inline=True)
@@ -90,6 +112,13 @@ async def update_player_message(player, bot_user=None):
     in the channel with current state.
     This is used for events like pause/resume/seek where the track doesn't change
     but the status indicators do.
+
+    Arguments
+    ---------
+    player : wavelink.Player
+        The player object for the guild.
+    bot_user : nextcord.User, optional
+        The bot's user object.
     """
     guild_id = str(player.guild.id)
     msg = ACTIVE_PLAYERS.get(guild_id)
