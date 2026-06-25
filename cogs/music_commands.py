@@ -133,9 +133,17 @@ class MusicCommands(commands.Cog):
     # ================= GENERAL COMMAND DECK =================
 
     @nextcord.slash_command(
-        name="play", description="Play a song or add it to the queue."
+        name="play", description="Search and play music from YouTube or SoundCloud."
     )
-    async def play(self, interaction: Interaction, song: str):
+    async def play(
+        self,
+        interaction: Interaction,
+        query: str = SlashOption(
+            name="query",
+            description="Enter a song title, artist name, or direct URL.",
+            required=True,
+        ),
+    ):
         """
         Handles the /play command, allowing users to play a song or add it to the queue.
         """
@@ -201,9 +209,9 @@ class MusicCommands(commands.Cog):
                 vc = await voice_channel.connect(cls=WavelinkPlayer)
 
         try:
-            tracks = await wavelink.Playable.search(song)
+            tracks = await wavelink.Playable.search(query)
         except wavelink.exceptions.LavalinkLoadException:
-            logger.warning(f"Unsupported source or invalid query: {song}")
+            logger.warning(f"Unsupported source or invalid query: {query}")
             await interaction.followup.send(
                 "**Unsupported Source:** Currently, this bot only supports "
                 "direct YouTube, YouTubeMusic and SoundCloud searches or URLs. "
@@ -664,7 +672,9 @@ class MusicCommands(commands.Cog):
                 f"DJ {interaction.user.name} skipped the song.\n"
                 f"Song: {vc.current.title} - {vc.current.author}"
             )
-            await vc.skip()
+            await vc.skip(
+                force=False
+            )  # Skip the current song but don't force it on loop
             await interaction.followup.send("Skipped the current song.", ephemeral=True)
         else:
             await interaction.followup.send(
@@ -749,10 +759,20 @@ class MusicCommands(commands.Cog):
         )
 
     @nextcord.slash_command(
-        name="volume", description="Set the playback volume (0-100)."
+        name="volume", description="Set the playback volume for the current session."
     )
     @has_dj_permissions()
-    async def volume(self, interaction: Interaction, value: int):
+    async def volume(
+        self,
+        interaction: Interaction,
+        value: int = SlashOption(
+            name="level",
+            description="Set volume between 0 and 100.",
+            min_value=0,
+            max_value=100,
+            required=True,
+        ),
+    ):
         """
         Handles the /volume command, allowing DJs to set the playback volume.
         """
@@ -772,12 +792,25 @@ class MusicCommands(commands.Cog):
         await interaction.followup.send(f"Volume set to {value}%.", ephemeral=True)
 
     @nextcord.slash_command(
-        name="loop", description="Toggle looping: None, Current Track, or Full Queue."
+        name="loop", description="Set the looping mode for the player."
     )
     @has_dj_permissions()
-    async def loop(self, interaction: Interaction):
+    async def loop(
+        self,
+        interaction: Interaction,
+        mode: str = SlashOption(
+            name="mode",
+            description="Select the looping behavior",
+            choices={
+                "Disable Loop": "none",
+                "Loop Current Track": "track",
+                "Loop Entire Queue": "queue",
+            },
+            required=True,
+        ),
+    ):
         """
-        Cycles through Wavelink QueueModes: Normal -> Loop (Track) -> Loop All (Queue).
+        Handles the /loop command, allowing DJs to set the looping mode.
         """
         await interaction.response.defer(ephemeral=True)
         vc: WavelinkPlayer = interaction.guild.voice_client
@@ -787,22 +820,21 @@ class MusicCommands(commands.Cog):
             )
 
         # 1. Cycle logic: None -> Loop (Track) -> Loop All (Queue) -> None
-        if vc.queue.mode == wavelink.QueueMode.normal:
-            vc.queue.mode = wavelink.QueueMode.loop
-            status = "Looping current track"
-        elif vc.queue.mode == wavelink.QueueMode.loop:
-            vc.queue.mode = wavelink.QueueMode.loop_all
-            status = "Looping the entire queue"
-        else:
-            vc.queue.mode = wavelink.QueueMode.normal
-            status = "Looping disabled"
+        mode_map = {
+            "none": wavelink.QueueMode.normal,
+            "track": wavelink.QueueMode.loop,
+            "queue": wavelink.QueueMode.loop_all,
+        }
 
         # 2. Update UI
+        vc.queue.mode = mode_map[mode]
         await update_player_message(vc, bot_user=self.bot.user)
-        await interaction.followup.send(f"🔄 **{status}.**", ephemeral=True)
+        await interaction.followup.send(
+            f"🔄 Loop mode set to: **{mode.capitalize()}**.", ephemeral=True
+        )
 
     @nextcord.slash_command(
-        name="autoplay", description="Set autoplay mode for continuous music."
+        name="autoplay", description="Toggle continuous music playback."
     )
     @has_dj_permissions()
     async def autoplay(
@@ -855,7 +887,16 @@ class MusicCommands(commands.Cog):
         description="Remove a specific track from the queue. (DJ Only)",
     )
     @has_dj_permissions()
-    async def remove(self, interaction: Interaction, position: int):
+    async def remove(
+        self,
+        interaction: Interaction,
+        position: int = SlashOption(
+            name="position",
+            description="The track number to remove from the queue.",
+            min_value=1,
+            required=True,
+        ),
+    ):
         """
         Handles the /remove command, allowing DJs to remove a specific track
         from either the regular queue or the automated recommendations queue.
@@ -934,6 +975,13 @@ class MusicCommands(commands.Cog):
         Centralized error handler for all application commands.
         Handles Wavelink-specific infrastructure failures
         and Nextcord permission errors.
+
+        Arguments
+        ---------
+        interaction: Interaction
+            The interaction that triggered the error.
+        error: Exception
+            The exception raised by the command.
         """
         original_error = getattr(error, "original", error)
         vc = interaction.guild.voice_client

@@ -145,8 +145,11 @@ class AudioEvents(commands.Cog):
             player, track, is_persistent=True, bot_user=self.bot.user
         )
 
-        # Put all songs to history to allow history playback
-        player.queue.history.put(track)
+        # Add current playing track to history if in normal mode
+        if player.queue.mode is wavelink.QueueMode.normal:
+            # Add track to history for persistent playback
+            player.queue.history.put(track)
+
         logger.info(f"Now Playing: {track.title} by {track.author}")
 
         activity = nextcord.Activity(
@@ -189,11 +192,27 @@ class AudioEvents(commands.Cog):
         payload : :class:`wavelink.TrackEndEventPayload`
             See Also: :class:`wavelink.TrackEndEventPayload`
         """
-        player = payload.player
+        player: wavelink.Player = payload.player
+        reason = payload.reason
+        track: wavelink.Playable = payload.track  # Current playing track
         if not player or not player.guild:
             return
 
         guild_id = str(player.guild.id)
+        logger.info(f"Track Ended: {track.title} by {track.author} | Reason: {reason}")
+
+        # Track Loop Mode
+        if player.queue.mode is wavelink.QueueMode.loop:
+            pass
+        # Queue Loop Mode
+        elif player.queue.mode is wavelink.QueueMode.loop_all:
+            # Add the current track to the end of the queue again
+            if player.queue.is_empty and not player.queue.history.is_empty:
+                assert player.queue.history is not None
+                player.queue._items.extend(player.queue.history._items)
+                player.queue.history.clear()
+            else:
+                player.queue.put(track)
 
         # 1. Handle intentional migration: if our custom flag is set, skip the cleanup
         if getattr(player, "ignore_next_cleanup", False):
@@ -202,12 +221,23 @@ class AudioEvents(commands.Cog):
 
         # 2. Handle track replacement: if the song was replaced by /play, do nothing
         if payload.reason == "replaced":
+            logger.info(
+                f"Guild {guild_id}: track replaced. "
+                f"Current track: {payload.track.title} by {payload.track.author}"
+            )
             return
 
-        # 3. Handle Looping: Replay the current track if loop is enabled
-        if getattr(player, "loop", False):
-            await player.play(payload.track)
-            return
+        # 3. Cleanup the player interface if it exists
+        try:
+            msg = ACTIVE_PLAYERS.get(guild_id)
+            if msg:
+                try:
+                    await msg.delete()
+                except Exception:
+                    pass
+                ACTIVE_PLAYERS[guild_id] = None
+        except Exception:
+            ACTIVE_PLAYERS[guild_id] = None
 
         # 4. Determine the next track to play
         next_track = None
@@ -223,8 +253,16 @@ class AudioEvents(commands.Cog):
 
         # If autoplay is disabled, check if the queue is empty.
         if player.autoplay == wavelink.AutoPlayMode.disabled:
+            # If the queue is not empty, play the next track
+            if not player.queue.is_empty:
+                next_track = player.queue.get()
+                kwargs["populate"] = True
+                kwargs["max_populate"] = 10
+                logger.info(f"Playing next track: {next_track.title}")
+                await player.play(next_track, **kwargs)
+                return
             # If the queue is empty, set the inactivity timeout
-            if player.queue.is_empty:
+            else:
                 logger.info(f"Queue empty in guild {guild_id}. Player is now idling.")
                 logger.info(
                     f"No songs left in queue. "
@@ -242,15 +280,6 @@ class AudioEvents(commands.Cog):
                     except Exception:
                         pass
                     ACTIVE_PLAYERS[guild_id] = None
-
-                return
-            # If the queue is not empty, play the next track
-            if not player.queue.is_empty:
-                next_track = player.queue.get()
-                kwargs["populate"] = True
-                kwargs["max_populate"] = 10
-                logger.info(f"Playing next track: {next_track.title}")
-                await player.play(next_track, **kwargs)
                 return
 
     @commands.Cog.listener()
@@ -289,7 +318,7 @@ class AudioEvents(commands.Cog):
         payload : :class:`wavelink.TrackExceptionEventPayload`
             See Also: :class:`wavelink.TrackExceptionEventPayload`
         """
-        logger.error(f"Track {payload.track.title} failed: {payload.exception.message}")
+        logger.error(f"Track {payload.track.title} failed: {payload.exception}")
         await payload.player.skip()
 
     @commands.Cog.listener()

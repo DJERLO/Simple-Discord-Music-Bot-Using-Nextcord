@@ -281,10 +281,10 @@ async def test_loop_command_guard_when_not_playing(cog):
 
 
 @pytest.mark.asyncio
-async def test_loop_command_toggle_state_inversion(cog):
+async def test_loop_command_state(cog):
     """
-    Scenario:
-    Confirm the loop boolean state flips and scales on back-to-back calls.
+    Boundary Value Test:
+    Confirming loop state changes.
     """
     interaction = AsyncMock(spec=nextcord.Interaction)
     interaction.response.defer = AsyncMock()
@@ -302,10 +302,16 @@ async def test_loop_command_toggle_state_inversion(cog):
     interaction.guild.voice_client = mock_vc
 
     # Now the test will be able to access vc.queue.mode
-    await cog.loop.callback(cog, interaction)
-
-    # Assert that mode was changed
+    await cog.loop.callback(cog, interaction, mode="none")
+    assert mock_vc.queue.mode == wavelink.QueueMode.normal
+    interaction.followup.send.assert_called()
+    await cog.loop.callback(cog, interaction, mode="track")
     assert mock_vc.queue.mode == wavelink.QueueMode.loop
+    interaction.followup.send.assert_called()
+    await cog.loop.callback(cog, interaction, mode="queue")
+    assert mock_vc.queue.mode == wavelink.QueueMode.loop_all
+    interaction.followup.send.assert_called()
+    assert interaction.followup.send.call_count == 3
 
 
 @pytest.mark.asyncio
