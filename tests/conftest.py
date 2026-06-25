@@ -6,7 +6,6 @@ import wavelink
 
 from bot import bot as bot_instance
 from cogs.music_commands import MusicCommands
-from ui.embeds import ACTIVE_PLAYERS, AUTO_DISCONNECT_TASKS, VOTE_SKIPS
 
 
 @pytest.fixture
@@ -44,15 +43,6 @@ def guild_id():
 def mock_bot_presence():
     with patch.object(bot_instance, "change_presence", new_callable=AsyncMock) as mock:
         yield mock
-
-
-@pytest.fixture(autouse=True)
-def clean_active_players():
-    ACTIVE_PLAYERS.clear()
-    AUTO_DISCONNECT_TASKS.clear()
-    VOTE_SKIPS.clear()
-    yield
-    ACTIVE_PLAYERS.clear()
 
 
 def patch_wavelink_connected():

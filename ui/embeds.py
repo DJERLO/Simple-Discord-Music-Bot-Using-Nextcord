@@ -3,7 +3,6 @@ import wavelink
 
 # Central Global Tracking States
 ACTIVE_PLAYERS = {}
-AUTO_DISCONNECT_TASKS = {}
 GUILD_AUTOPLAY_MODES = {}
 VOTE_SKIPS = {}
 MESSAGE_DELETE_TIMEOUT = 60.0  # 1 minute in seconds
@@ -76,12 +75,12 @@ def create_now_playing_embed(
     # Status Indicators
     loop_states = {
         wavelink.QueueMode.normal: "➡️ Normal",
-        wavelink.QueueMode.loop: "🔂 Track",
+        wavelink.QueueMode.loop: " 1️⃣ Track",
         wavelink.QueueMode.loop_all: "🔁 Queue",
     }
     autoplay_mode = player.autoplay
     ap_label = {
-        wavelink.AutoPlayMode.enabled: "✅ Full",
+        wavelink.AutoPlayMode.enabled: "✅ Enabled",
         wavelink.AutoPlayMode.disabled: "❌ Disabled",
     }.get(autoplay_mode, "Unknown")
 
@@ -113,7 +112,40 @@ def create_now_playing_embed(
     return embed
 
 
-async def update_player_message(player, bot_user=None):
+async def send_player_now_playing(player: wavelink.Player, bot_user=None):
+    """
+    Creates and sends the main player message in the channel.
+
+    Arguments
+    ---------
+    player : wavelink.Player
+        The player object for the guild.
+    bot_user : nextcord.User, optional
+        The bot's user object.
+    """
+    guild_id = str(player.guild.id)
+    embed = create_now_playing_embed(
+        player, player.current, is_persistent=True, bot_user=bot_user
+    )
+
+    # Check if we are already tracking a message for this guild
+    msg = ACTIVE_PLAYERS.get(guild_id)
+
+    if msg:
+        try:
+            await msg.edit(embed=embed)
+            return msg  # Successfully updated existing
+        except (nextcord.NotFound, nextcord.HTTPException):
+            # Message was deleted or inaccessible, fall through to send new
+            pass
+
+    # Send new if no existing message or edit failed
+    new_msg = await player.channel.send(embed=embed)
+    ACTIVE_PLAYERS[guild_id] = new_msg
+    return new_msg
+
+
+async def update_player_message(player: wavelink.Player, bot_user=None):
     """
     Updates the existing persistent player message
     in the channel with current state.
@@ -137,3 +169,63 @@ async def update_player_message(player, bot_user=None):
             await msg.edit(embed=embed)
         except Exception:
             pass
+
+
+async def cleanup_player_message(player: wavelink.Player):
+    """
+    Cleans up the existing persistent player message
+    in the channel.
+
+    Arguments
+    ---------
+    player : wavelink.Player
+        The player object for the guild.
+    """
+    guild_id = str(player.guild.id)
+    try:
+        msg = ACTIVE_PLAYERS.get(guild_id)
+        if msg:
+            try:
+                await msg.delete()
+            except Exception:
+                pass
+            ACTIVE_PLAYERS[guild_id] = None
+    except Exception:
+        ACTIVE_PLAYERS[guild_id] = None
+
+
+async def refresh_player_message(
+    player: wavelink.Player, channel: nextcord.TextChannel, bot_user=None
+):
+    """
+    Centralized helper to clean up the old dashboard and send a new one
+    in a specific channel.
+
+    Arguments
+    ---------
+    player : wavelink.Player
+        The player object for the guild.
+    channel : nextcord.TextChannel
+        The channel to send the message in.
+    bot_user : nextcord.User, optional
+        The bot's user object.
+
+    Returns
+    -------
+    nextcord.Message
+        The new message sent.
+    """
+    guild_id = str(player.guild.id)
+
+    # 1. Clean up old one
+    await cleanup_player_message(player)
+
+    # 2. Create fresh embed
+    embed = create_now_playing_embed(
+        player, player.current, is_persistent=True, bot_user=bot_user
+    )
+
+    # 3. Send and track
+    new_msg = await channel.send(embed=embed)
+    ACTIVE_PLAYERS[guild_id] = new_msg
+    return new_msg

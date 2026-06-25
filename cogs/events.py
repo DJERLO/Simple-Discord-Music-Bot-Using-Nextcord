@@ -8,11 +8,11 @@ from cogs.music_commands import WavelinkPlayer
 from core.logging import get_logger
 from core.setup import recover_lavalink_session
 from ui.embeds import (
-    ACTIVE_PLAYERS,
-    AUTO_DISCONNECT_TASKS,
     MESSAGE_DELETE_TIMEOUT,
     VOTE_SKIPS,
-    create_now_playing_embed,
+    cleanup_player_message,
+    send_player_now_playing,
+    update_player_message,
 )
 
 logger = get_logger(__name__)
@@ -141,9 +141,6 @@ class AudioEvents(commands.Cog):
         track: wavelink.Playable = payload.track
         guild_id = str(player.guild.id)
         VOTE_SKIPS[guild_id] = set()  # Reset vote skips for the new track
-        embed = create_now_playing_embed(
-            player, track, is_persistent=True, bot_user=self.bot.user
-        )
 
         # Add current playing track to history if in normal mode
         if player.queue.mode is wavelink.QueueMode.normal:
@@ -168,18 +165,8 @@ class AudioEvents(commands.Cog):
             status=nextcord.Status.online,
         )
 
-        # Update or send the player interface message
-        try:
-            msg = ACTIVE_PLAYERS.get(guild_id)
-            if msg:
-                try:
-                    await msg.edit(embed=embed)
-                    return
-                except Exception:
-                    pass
-            ACTIVE_PLAYERS[guild_id] = await player.channel.send(embed=embed)
-        except Exception:
-            ACTIVE_PLAYERS[guild_id] = None
+        # Send the player interface message on the voice channel
+        await send_player_now_playing(player, self.bot.user)
 
     @commands.Cog.listener()
     async def on_wavelink_track_end(self, payload: wavelink.TrackEndEventPayload):
@@ -227,17 +214,8 @@ class AudioEvents(commands.Cog):
             )
             return
 
-        # 3. Cleanup the player interface if it exists
-        try:
-            msg = ACTIVE_PLAYERS.get(guild_id)
-            if msg:
-                try:
-                    await msg.delete()
-                except Exception:
-                    pass
-                ACTIVE_PLAYERS[guild_id] = None
-        except Exception:
-            ACTIVE_PLAYERS[guild_id] = None
+        # 3. Update the player interface
+        await update_player_message(player, self.bot.user)
 
         # 4. Determine the next track to play
         next_track = None
@@ -273,13 +251,7 @@ class AudioEvents(commands.Cog):
                     activity=None, status=nextcord.Status.idle
                 )
 
-                msg = ACTIVE_PLAYERS.get(guild_id)
-                if msg:
-                    try:
-                        await msg.delete()
-                    except Exception:
-                        pass
-                    ACTIVE_PLAYERS[guild_id] = None
+                await cleanup_player_message(player)
                 return
 
     @commands.Cog.listener()
@@ -329,22 +301,30 @@ class AudioEvents(commands.Cog):
         Called when the websocket to the voice server is closed.
         """
         code = payload.code.value if hasattr(payload.code, "value") else payload.code
+        reason = payload.reason
+        by_remote = payload.by_remote if hasattr(payload, "by_remote") else False
+
+        msg = (
+            f"Voice WebSocket Closed | "
+            f"Code: {code} | "
+            f"Reason: {reason if reason else 'Unknown'} | "
+            f"By Remote: {by_remote}"
+        )
 
         # 1. Check for intentional "Normal" closures (1000)
         if code == 1000:
-            logger.info("WebSocket closed normally.")
+            logger.info(msg)
+            return
+        # Disconnect on 4014
+        if code == 4014:
+            logger.info(msg)
             return
 
-        # 2. Log others
-        log_message = (
-            f"Voice WebSocket Closed | Code: {payload.code} | Reason: {payload.reason}"
-        )
-
         # Now this won't trigger for the 1000/CLOSE_NORMAL case
-        if code in [4006, 4014]:
-            logger.warning(log_message)
+        if code in [4006, 4016]:
+            logger.warning(msg)
         else:
-            logger.error(f"CRITICAL: {log_message}")
+            logger.error(f"CRITICAL: {msg}")
 
     @commands.Cog.listener()
     async def on_wavelink_node_ready(
@@ -444,19 +424,12 @@ class AudioEvents(commands.Cog):
         player : :class:`wavelink.Player`
             See Also: :class:`wavelink.Player`
         """
-        guild_id = str(player.guild.id)
         logger.info(
             f"Guild {player.guild.id} timed out after {player.inactive_timeout}s."
         )
 
         # 1. Clean up active player message/dashboard if it exists
-        player_msg = ACTIVE_PLAYERS.get(guild_id)
-        if player_msg:
-            try:
-                await player_msg.delete()
-            except Exception:
-                pass
-            ACTIVE_PLAYERS.pop(guild_id, None)
+        await cleanup_player_message(player)
 
         # 2. Clear state, queue, and auto_queue
         player.queue.clear()
@@ -485,11 +458,6 @@ class AudioEvents(commands.Cog):
                 )
         except Exception as e:
             logger.error(f"Error sending inactivity leave message: {e}")
-
-        # 4. Cancel any pending custom empty-channel task
-        task = AUTO_DISCONNECT_TASKS.pop(guild_id, None)
-        if task:
-            task.cancel()
 
         # 5. Disconnect and clear presence
         try:

@@ -1,4 +1,3 @@
-import asyncio
 import random
 
 import aiohttp
@@ -12,13 +11,14 @@ from core.logging import get_logger
 from core.setup import get_diagnostic_message
 from ui.embeds import (
     ACTIVE_PLAYERS,
-    AUTO_DISCONNECT_TASKS,
     GUILD_AUTOPLAY_MODES,
     MESSAGE_DELETE_TIMEOUT,
     VOTE_SKIPS,
+    cleanup_player_message,
     create_now_playing_embed,
     format_time,
     get_track_artwork,
+    refresh_player_message,
     update_player_message,
 )
 from ui.views import QueueView as QueueSongList
@@ -171,33 +171,7 @@ class MusicCommands(commands.Cog):
                 str(interaction.guild_id), wavelink.AutoPlayMode.disabled
             )
         elif voice_channel != vc.channel:
-            guild_id = str(interaction.guild_id)
-
-            # Clean up the old player interface before moving to a new channel
-            old_msg = ACTIVE_PLAYERS.get(guild_id)
-            if old_msg:
-                try:
-                    await old_msg.delete()
-                except Exception:
-                    pass
-                ACTIVE_PLAYERS[guild_id] = None
-
-            # Cancel pending disconnect tasks and reset state if the bot was idling
-            task = AUTO_DISCONNECT_TASKS.pop(guild_id, None)
-            if task:
-                logger.info(
-                    f"New play request in guild {guild_id}. Aborting disconnect timer."
-                )
-                task.cancel()
-                try:
-                    await task
-                except asyncio.CancelledError:
-                    pass
-                vc.queue.clear()
-                if vc.playing or vc.paused:
-                    vc.ignore_next_cleanup = True
-                    await vc.stop()
-
+            # Move to the new voice channel
             try:
                 await vc.move_to(voice_channel)
             except Exception:
@@ -468,32 +442,14 @@ class MusicCommands(commands.Cog):
             return
 
         elif vc and vc.channel != voice_channel:
-            # 1. Clean up the old persistent dashboard message from the old channel
-            old_msg = ACTIVE_PLAYERS.get(guild_id)
-            if old_msg:
-                try:
-                    await old_msg.delete()
-                except Exception:
-                    pass
-                ACTIVE_PLAYERS[guild_id] = None
-
-            # 2. Shift the connection over to the new channel location cleanly
+            # 1. Shift the connection over to the new channel location cleanly
             await vc.move_to(voice_channel)
 
-            # 3. Drop a fresh now-playing UI panel right where the user just ran /join
+            # 2. Drop a fresh now-playing UI panel right where the user just ran /join
             if vc.playing or vc.paused:
-                current_track = vc.current
-                if current_track:
-                    # Construct a pristine visual embed card
-                    embed = create_now_playing_embed(
-                        vc, current_track, is_persistent=True, bot_user=self.bot.user
-                    )
-
-                    # Send it fresh into the new text channel
-                    new_msg = await interaction.channel.send(embed=embed)
-
-                    # Re-cache the newly generated message reference globally
-                    ACTIVE_PLAYERS[guild_id] = new_msg
+                await refresh_player_message(
+                    vc, interaction.channel, bot_user=self.bot.user
+                )
         else:
             vc = await voice_channel.connect(cls=WavelinkPlayer)
             vc.autoplay = GUILD_AUTOPLAY_MODES.get(
@@ -504,7 +460,6 @@ class MusicCommands(commands.Cog):
             f"Joined **{voice_channel.name}**!", ephemeral=True
         )
 
-    # TODO: NoneType if the queue and auto_queue is empty
     @nextcord.slash_command(
         name="clearqueue", description="Clear the current music queue."
     )
@@ -635,7 +590,7 @@ class MusicCommands(commands.Cog):
 
         # 8. Evaluate threshold criteria
         if current_votes >= required_votes:
-            await vc.skip()
+            await vc.skip(force=False)
             # Clear the vote tracking set immediately upon successful skip execution
             VOTE_SKIPS[guild_id] = set()
             await interaction.followup.send(
@@ -746,11 +701,7 @@ class MusicCommands(commands.Cog):
         vc.queue.clear()
 
         if guild_id_str in ACTIVE_PLAYERS:
-            try:
-                await ACTIVE_PLAYERS[guild_id_str].delete()
-            except Exception:
-                pass
-            ACTIVE_PLAYERS[guild_id_str] = None
+            await cleanup_player_message(vc)
 
         await vc.disconnect()
         await self.bot.change_presence(activity=None)

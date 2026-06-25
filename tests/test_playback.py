@@ -11,6 +11,7 @@ from ui.embeds import (
     ACTIVE_PLAYERS,
     GUILD_AUTOPLAY_MODES,
     MESSAGE_DELETE_TIMEOUT,
+    cleanup_player_message,
     update_player_message,
 )
 
@@ -82,15 +83,15 @@ async def test_stop_command_success(guild_id, mock_bot_presence, cog):
     interaction.followup.send = AsyncMock()
     interaction.guild_id = int(guild_id)
 
+    player = interaction.guild.voice_client = AsyncMock()
     interaction.guild.voice_client.disconnect = AsyncMock()
     interaction.guild.voice_client.queue.clear = MagicMock()
-    ACTIVE_PLAYERS[str(guild_id)] = AsyncMock()
 
     await cog.stop.callback(cog, interaction)
 
     interaction.guild.voice_client.queue.clear.assert_called_once()
     interaction.guild.voice_client.disconnect.assert_called_once()
-    assert ACTIVE_PLAYERS.get(str(guild_id)) is None
+    assert cleanup_player_message(player)
     mock_bot_presence.assert_called_once_with(activity=None)
 
 

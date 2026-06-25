@@ -6,20 +6,25 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 ## [1.1.1] - 2026-06-25 (In Progress)
 
 ### Added
-- **Loop Modes**: Integrated `loop_all` functionality to the queue system.
-- **Slash Options**: Migrated `/play`, `/volume`, `/loop`, and `/remove` commands to structured slash options, improving UI consistency and user experience.
-- **Testing**: Expanded the high-fidelity test suite to 67+ cases, achieving 100% logic coverage for audio event lifecycle transitions.
+
+* **Loop Modes**: Integrated `loop_all` functionality to the queue system.
+* **Slash Options**: Migrated `/play`, `/volume`, `/loop`, and `/remove` commands to structured slash options, improving UI consistency.
+* **Testing**: Expanded the high-fidelity test suite to 64 cases, achieving 100% logic coverage for audio event lifecycle.
+* **Persistent UI Infrastructure**: Introduced a unified `embed` helper suite in `ui/embeds.py` (`send_player_now_playing`, `update_player_message`) to manage dashboard states across channels, eliminating flicker and improving message persistence.
 
 ### Changed
-- **Loop Logic**: Overhauled `/loop` command from a binary toggle to a multi-mode selection system (None/Track/Queue).
-- **Playback Architecture**: Implemented "Autoplay-first" logic, prioritizing native Wavelink event handling and eliminating redundant manual cleanup tasks.
-- **UI/UX**: Added state-based color coding to embed generators for improved visual feedback.
+
+* **Loop Logic**: Overhauled `/loop` command from a binary toggle to a multi-mode selection system (None/Track/Queue).
+* **Playback Architecture**: Implemented "Autoplay-first" logic, prioritizing native Wavelink event handling and eliminating redundant manual cleanup tasks (`AUTO_DISCONNECT_TASKS`).
+* **UI/UX**: Transitioned to an "Edit-if-exists, Send-if-not" dashboard update pattern for improved interaction stability.
 
 ### Fixed
-- **Duplicate Tracks**: Resolved a critical race condition causing duplicate entries in the queue during `loop_all` transitions.
-- **Stability**: Neutralized Wavelink's default inactivity limits (token bucket/track limits) to prevent phantom disconnects during rapid track skips.
-- **Voice Logic**: Fixed inactivity timer bugs; the bot now correctly performs live `channel.members` verification (ignoring bots) before enforcing disconnects.
-- **Race Conditions**: Resolved `/skip` logic errors where the bot would repeat the previous track instead of loading the next item from the queue.
+
+* **Duplicate Tracks**: Resolved a critical race condition causing duplicate entries in the queue during `loop_all` transitions.
+* **Stability**: Neutralized Wavelink's default inactivity limits to prevent phantom disconnects.
+* **Voice Logic**: Fixed inactivity timer bugs; the bot now correctly performs live `channel.members` verification (ignoring bots) before enforcing disconnects.
+* **Race Conditions**: Resolved `/skip` logic errors where the bot would repeat the previous track.
+* **Security**: Patched high-severity vulnerabilities in `tar` and `qs` dependencies via package overrides to ensure secure documentation build pipelines.
 
 ---
 
