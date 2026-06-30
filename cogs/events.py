@@ -1,3 +1,20 @@
+"""
+cogs/events.py
+
+This module contains event handlers for various audio-related events,
+including voice state updates for auto-disconnect logic and
+Wavelink track lifecycle events for dynamic player interface management.
+
+Origin:
+- Author: Jerlo De Leon
+- Date: 2026-06-30
+
+Classes
+-------
+AudioEvents
+    Cog dedicated to handling audio-related events.
+"""
+
 import time
 
 import nextcord

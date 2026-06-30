@@ -1,27 +1,36 @@
+"""
+cogs/music_commands.py
+
+Music commands for the bot, including playback, queue management, and player controls.
+
+Origin:
+- Author: Jerlo De Leon
+- Date: 2026-06-30
+
+Classes
+-------
+WavelinkPlayer
+    Custom player class that inherits from Wavelink's Player and
+    Nextcord's VoiceProtocol, extending base functionality
+    to include custom inactivity handling and unified
+    track history tracking.
+
+MusicCommands
+    Cog that contains all slash commands related to music playback,
+    queue management, and player controls.
+"""
+
 import random
 
 import aiohttp
 import nextcord
 import wavelink
-from nextcord import Interaction, SlashOption
 from nextcord.ext import commands
 
 from core.decorators import has_dj_permissions
 from core.logging import get_logger
 from core.setup import get_diagnostic_message
-from ui.embeds import (
-    ACTIVE_PLAYERS,
-    GUILD_AUTOPLAY_MODES,
-    MESSAGE_DELETE_TIMEOUT,
-    VOTE_SKIPS,
-    cleanup_player_message,
-    create_now_playing_embed,
-    format_time,
-    get_track_artwork,
-    refresh_player_message,
-    update_player_message,
-)
-from ui.views import QueueView as QueueSongList
+from ui import embeds, views
 
 logger = get_logger(__name__)
 
@@ -43,9 +52,10 @@ class WavelinkPlayer(wavelink.Player, nextcord.VoiceProtocol):
         before triggering an automatic disconnect event.
 
     Properties
-    -------
-    last_played_track : :class:`wavelink.Playable` | None
-        Property that retrieves the track immediately preceding the current track
+    ----------
+    last_played_track: :class:`wavelink.Playable` | None
+
+    Property that retrieves the track immediately preceding the current track
         from the internal history buffer.
     """
 
@@ -125,6 +135,14 @@ class MusicCommands(commands.Cog):
         self.bot = bot
 
     def _is_node_ready(self):
+        """
+        Checks if all Lavalink nodes are connected and ready to play music.
+
+        Returns
+        -------
+        bool
+            True if all nodes are connected and ready, False otherwise.
+        """
         nodes = wavelink.Pool.nodes
         return nodes and any(
             n.status == wavelink.NodeStatus.CONNECTED for n in nodes.values()
@@ -137,8 +155,8 @@ class MusicCommands(commands.Cog):
     )
     async def play(
         self,
-        interaction: Interaction,
-        query: str = SlashOption(
+        interaction: nextcord.Interaction,
+        query: str = nextcord.SlashOption(
             name="query",
             description="Enter a song title, artist name, or direct URL.",
             required=True,
@@ -146,6 +164,13 @@ class MusicCommands(commands.Cog):
     ):
         """
         Handles the /play command, allowing users to play a song or add it to the queue.
+
+        Parameters
+        ----------
+        interaction : :class:`nextcord.Interaction`
+            The interaction that triggered the command.
+        query : str
+            The song title, artist name, or direct URL to search for.
         """
         await interaction.response.defer(ephemeral=True)
 
@@ -158,7 +183,7 @@ class MusicCommands(commands.Cog):
             await interaction.followup.send(
                 "You must be in a voice channel.",
                 ephemeral=True,
-                delete_after=MESSAGE_DELETE_TIMEOUT,
+                delete_after=embeds.MESSAGE_DELETE_TIMEOUT,
             )
             return
 
@@ -167,7 +192,7 @@ class MusicCommands(commands.Cog):
 
         if not vc:
             vc = await voice_channel.connect(cls=WavelinkPlayer)
-            vc.autoplay = GUILD_AUTOPLAY_MODES.get(
+            vc.autoplay = embeds.GUILD_AUTOPLAY_MODES.get(
                 str(interaction.guild_id), wavelink.AutoPlayMode.disabled
             )
         elif voice_channel != vc.channel:
@@ -191,13 +216,15 @@ class MusicCommands(commands.Cog):
                 "direct YouTube, YouTubeMusic and SoundCloud searches or URLs. "
                 "Please provide a valid YouTube or SoundCloud link, or a search term.",
                 ephemeral=True,
-                delete_after=MESSAGE_DELETE_TIMEOUT,
+                delete_after=embeds.MESSAGE_DELETE_TIMEOUT,
             )
             return
 
         if not tracks:
             await interaction.followup.send(
-                "No results found.", ephemeral=True, delete_after=MESSAGE_DELETE_TIMEOUT
+                "No results found.",
+                ephemeral=True,
+                delete_after=embeds.MESSAGE_DELETE_TIMEOUT,
             )
             return
 
@@ -221,9 +248,11 @@ class MusicCommands(commands.Cog):
             track.extras = extras
             await vc.queue.put_wait(track)
             message = (
-                f"**{track.title}** by **{track.author}** ({format_time(track.length)})"
+                f"**{track.title}** by "
+                f"**{track.author}**"
+                f"({embeds.format_time(track.length)})"
             )
-            thumbnail = get_track_artwork(track)
+            thumbnail = embeds.get_track_artwork(track)
 
         embed = nextcord.Embed(
             title="Added to Queue", description=message, color=nextcord.Color.orange()
@@ -236,7 +265,7 @@ class MusicCommands(commands.Cog):
         )
 
         await interaction.followup.send(
-            embed=embed, ephemeral=True, delete_after=MESSAGE_DELETE_TIMEOUT
+            embed=embed, ephemeral=True, delete_after=embeds.MESSAGE_DELETE_TIMEOUT
         )
 
         if not vc.playing:
@@ -249,9 +278,14 @@ class MusicCommands(commands.Cog):
 
     @nextcord.slash_command(name="previous", description="Play the previous song")
     @has_dj_permissions()
-    async def previous(self, interaction: Interaction):
+    async def previous(self, interaction: nextcord.Interaction):
         """
         Handles the /previous command, allowing users to play the previous song.
+
+        Parameters
+        ----------
+        interaction : :class:`nextcord.Interaction`
+            The interaction that triggered the command.
         """
         await interaction.response.defer(ephemeral=True)
 
@@ -265,7 +299,7 @@ class MusicCommands(commands.Cog):
             await interaction.followup.send(
                 "You must be in a voice channel.",
                 ephemeral=True,
-                delete_after=MESSAGE_DELETE_TIMEOUT,
+                delete_after=embeds.MESSAGE_DELETE_TIMEOUT,
             )
             return
 
@@ -274,7 +308,7 @@ class MusicCommands(commands.Cog):
             await interaction.followup.send(
                 "You must be in the same voice channel as me to use this command.",
                 ephemeral=True,
-                delete_after=MESSAGE_DELETE_TIMEOUT,
+                delete_after=embeds.MESSAGE_DELETE_TIMEOUT,
             )
             return
         # Current Index - 1 = last_track
@@ -296,23 +330,36 @@ class MusicCommands(commands.Cog):
         )
         await vc.play(prev_track, add_history=False)
         # Update the embed now playing track
-        await update_player_message(vc, bot_user=self.bot.user)
+        await embeds.update_player_message(vc, bot_user=self.bot.user)
 
         await interaction.followup.send(
             "Switched to the previous track!",
             ephemeral=True,
-            delete_after=MESSAGE_DELETE_TIMEOUT,
+            delete_after=embeds.MESSAGE_DELETE_TIMEOUT,
         )
 
     @nextcord.slash_command(name="queue", description="Show the current music queue.")
-    async def queue(self, interaction: Interaction):
+    async def queue(self, interaction: nextcord.Interaction):
         """
         Handles the /queue command, allowing users to view the
         current music queue and autoplay list.
 
-        Logic for Autoplay modes in the queue view:
-        - Enabled: Shows the entire auto-queue populated by Lavalink recommendations.
-        - Disabled: No autoplay tracks are shown.
+        - If the queue is empty, it will send a message indicating
+        that there is nothing in the queue.
+
+        - If the queue is not empty, it will send a message
+        containing the current queue and autoplay list.
+
+        - if the autoplay.enabled, it will send a message
+        containing the current queue and autoplay list.
+
+        - if the autoplay.disabled, it will send a message
+        containing the current queue.
+
+        Parameters
+        ----------
+        interaction : :class:`nextcord.Interaction`
+            The interaction that triggered the command.
         """
         await interaction.response.defer(ephemeral=True)
         vc: WavelinkPlayer = interaction.guild.voice_client
@@ -324,7 +371,12 @@ class MusicCommands(commands.Cog):
         songs_list = []
         for track in vc.queue:
             songs_list.append(
-                (track.uri, track.title, get_track_artwork(track), track.length / 1000)
+                (
+                    track.uri,
+                    track.title,
+                    embeds.get_track_artwork(track),
+                    track.length / 1000,
+                )
             )
 
         if vc.autoplay == wavelink.AutoPlayMode.enabled:
@@ -334,7 +386,7 @@ class MusicCommands(commands.Cog):
                     (
                         track.uri,
                         f"✨ {track.title} (Auto-Queue)",
-                        get_track_artwork(track),
+                        embeds.get_track_artwork(track),
                         track.length / 1000,
                     )
                 )
@@ -344,7 +396,7 @@ class MusicCommands(commands.Cog):
                 "The queue is currently empty.", ephemeral=True
             )
 
-        view = QueueSongList(songs_list, interaction.user, str(interaction.guild_id))
+        view = views.QueueView(songs_list, interaction.user, str(interaction.guild_id))
         await interaction.followup.send(
             embed=view.get_embed(), view=view, ephemeral=True
         )
@@ -353,10 +405,15 @@ class MusicCommands(commands.Cog):
     @nextcord.slash_command(
         name="nowplaying", description="Show details of the currently playing song."
     )
-    async def nowplaying(self, interaction: Interaction):
+    async def nowplaying(self, interaction: nextcord.Interaction):
         """
         Handles the /nowplaying command, providing users
         with details about the currently playing track.
+
+        Parameters
+        ----------
+        interaction : :class:`nextcord.Interaction`
+            The interaction that triggered the command.
         """
         await interaction.response.defer(ephemeral=True)
         vc: WavelinkPlayer = interaction.guild.voice_client
@@ -366,13 +423,13 @@ class MusicCommands(commands.Cog):
             )
 
         track = vc.current
-        embed = create_now_playing_embed(
+        embed = embeds.create_now_playing_embed(
             vc, track, is_persistent=False, bot_user=self.bot.user
         )
         await interaction.followup.send(embed=embed, ephemeral=True)
 
     @nextcord.slash_command(name="ping", description="Check the bot's latency.")
-    async def ping(self, interaction: Interaction):
+    async def ping(self, interaction: nextcord.Interaction):
         """Handles the /ping command, allowing users to check the bot's latency."""
         await interaction.response.defer(ephemeral=True)
         latency_ms = round(self.bot.latency * 1000)
@@ -383,8 +440,15 @@ class MusicCommands(commands.Cog):
     @nextcord.slash_command(
         name="help", description="Show available commands and usage."
     )
-    async def help_command(self, interaction: Interaction):
-        """QA: Render a line-length safe, explicitly structured help manual."""
+    async def help_command(self, interaction: nextcord.Interaction):
+        """
+        QA: Render a line-length safe, explicitly structured help manual.
+
+        Parameters
+        ----------
+        interaction : :class:`nextcord.Interaction`
+            The interaction that triggered the command.
+        """
         await interaction.response.defer(ephemeral=True)
         help_text = (
             "**General Commands:**\n"
@@ -416,8 +480,15 @@ class MusicCommands(commands.Cog):
     @nextcord.slash_command(
         name="join", description="Make the bot join your voice channel."
     )
-    async def join(self, interaction: Interaction):
-        """Handles the /join command, pulling the bot and its UI panels safely."""
+    async def join(self, interaction: nextcord.Interaction):
+        """
+        Handles the /join command, pulling the bot and its UI panels safely.
+
+        Parameters
+        ----------
+        interaction : :class:`nextcord.Interaction`
+            The interaction that triggered the command.
+        """
         await interaction.response.defer(ephemeral=True)
         if not self._is_node_ready():
             return await interaction.followup.send(
@@ -427,7 +498,7 @@ class MusicCommands(commands.Cog):
             await interaction.followup.send(
                 "You must be in a voice channel to use this command.",
                 ephemeral=True,
-                delete_after=MESSAGE_DELETE_TIMEOUT,
+                delete_after=embeds.MESSAGE_DELETE_TIMEOUT,
             )
             return
 
@@ -447,12 +518,12 @@ class MusicCommands(commands.Cog):
 
             # 2. Drop a fresh now-playing UI panel right where the user just ran /join
             if vc.playing or vc.paused:
-                await refresh_player_message(
+                await embeds.refresh_player_message(
                     vc, interaction.channel, bot_user=self.bot.user
                 )
         else:
             vc = await voice_channel.connect(cls=WavelinkPlayer)
-            vc.autoplay = GUILD_AUTOPLAY_MODES.get(
+            vc.autoplay = embeds.GUILD_AUTOPLAY_MODES.get(
                 guild_id, wavelink.AutoPlayMode.disabled
             )
 
@@ -464,10 +535,15 @@ class MusicCommands(commands.Cog):
         name="clearqueue", description="Clear the current music queue."
     )
     @has_dj_permissions()
-    async def clearqueue(self, interaction: Interaction):
+    async def clearqueue(self, interaction: nextcord.Interaction):
         """
         Handles the /clearqueue command,
         allowing users to clear the current music queue.
+
+        Parameters
+        ----------
+        interaction : :class:`nextcord.Interaction`
+            The interaction that triggered the command.
         """
         await interaction.response.defer(ephemeral=True)
         vc: WavelinkPlayer = interaction.guild.voice_client
@@ -501,10 +577,15 @@ class MusicCommands(commands.Cog):
     @nextcord.slash_command(
         name="shuffle", description="Shuffle the current music queue."
     )
-    async def shuffle(self, interaction: Interaction):
+    async def shuffle(self, interaction: nextcord.Interaction):
         """
         Handles the /shuffle command, allowing users to shuffle the current music queue
         especially the auto-queue.
+
+        Parameters
+        ----------
+        interaction : :class:`nextcord.Interaction`
+            The interaction that triggered the command.
         """
         await interaction.response.defer(ephemeral=True)
         vc: WavelinkPlayer = interaction.guild.voice_client
@@ -536,10 +617,15 @@ class MusicCommands(commands.Cog):
     @nextcord.slash_command(
         name="voteskip", description="Vote to skip the current song."
     )
-    async def voteskip(self, interaction: Interaction):
+    async def voteskip(self, interaction: nextcord.Interaction):
         """
         Handles the /voteskip command, allowing users to vote to skip the current song.
         Requires a 50% majority of human members listening in the voice channel.
+
+        Parameters
+        ----------
+        interaction : :class:`nextcord.Interaction`
+            The interaction that triggered the command.
         """
         await interaction.response.defer(ephemeral=True)
         vc: WavelinkPlayer = interaction.guild.voice_client
@@ -559,18 +645,18 @@ class MusicCommands(commands.Cog):
         guild_id = str(interaction.guild_id)
         user_id = interaction.user.id
 
-        if guild_id not in VOTE_SKIPS:
-            VOTE_SKIPS[guild_id] = set()
+        if guild_id not in embeds.VOTE_SKIPS:
+            embeds.VOTE_SKIPS[guild_id] = set()
 
         # 4. Check for double voting
-        if user_id in VOTE_SKIPS[guild_id]:
+        if user_id in embeds.VOTE_SKIPS[guild_id]:
             return await interaction.followup.send(
                 "You have already voted to skip this song.", ephemeral=True
             )
 
         # 5. Register the user's vote
-        VOTE_SKIPS[guild_id].add(user_id)
-        current_votes = len(VOTE_SKIPS[guild_id])
+        embeds.VOTE_SKIPS[guild_id].add(user_id)
+        current_votes = len(embeds.VOTE_SKIPS[guild_id])
 
         # 6. Dynamically count active human listeners (excluding bots)
         listeners = [member for member in vc.channel.members if not member.bot]
@@ -592,7 +678,7 @@ class MusicCommands(commands.Cog):
         if current_votes >= required_votes:
             await vc.skip(force=False)
             # Clear the vote tracking set immediately upon successful skip execution
-            VOTE_SKIPS[guild_id] = set()
+            embeds.VOTE_SKIPS[guild_id] = set()
             await interaction.followup.send(
                 f"⏩ **Vote passed!** ({current_votes}/{total_listeners} votes). "
                 f"Skipping to the next track!",
@@ -609,9 +695,14 @@ class MusicCommands(commands.Cog):
 
     @nextcord.slash_command(name="skip", description="Skips the current playing song")
     @has_dj_permissions()
-    async def skip(self, interaction: Interaction):
+    async def skip(self, interaction: nextcord.Interaction):
         """
         Handles the /skip command, allowing DJs to skip the currently playing song.
+
+        Parameters
+        ----------
+        interaction : :class:`nextcord.Interaction`
+            The interaction that triggered the command.
         """
         await interaction.response.defer(ephemeral=True)
         vc: WavelinkPlayer = interaction.guild.voice_client
@@ -620,7 +711,7 @@ class MusicCommands(commands.Cog):
                 await interaction.followup.send(
                     "You must be in the same voice channel as me to use this command.",
                     ephemeral=True,
-                    delete_after=MESSAGE_DELETE_TIMEOUT,
+                    delete_after=embeds.MESSAGE_DELETE_TIMEOUT,
                 )
                 return
             logger.info(
@@ -640,9 +731,14 @@ class MusicCommands(commands.Cog):
         name="pause", description="Pause the currently playing song."
     )
     @has_dj_permissions()
-    async def pause(self, interaction: Interaction):
+    async def pause(self, interaction: nextcord.Interaction):
         """
         Handles the /pause command, allowing DJs to pause the currently playing song.
+
+        Parameters
+        ----------
+        interaction : :class:`nextcord.Interaction`
+            The interaction that triggered the command.
         """
         await interaction.response.defer(ephemeral=True)
         vc: WavelinkPlayer = interaction.guild.voice_client
@@ -656,16 +752,21 @@ class MusicCommands(commands.Cog):
             )
 
         await vc.pause(True)
-        await update_player_message(vc, bot_user=self.bot.user)
+        await embeds.update_player_message(vc, bot_user=self.bot.user)
         await interaction.followup.send("Playback paused!", ephemeral=True)
 
     @nextcord.slash_command(
         name="resume", description="Resume the currently paused song."
     )
     @has_dj_permissions()
-    async def resume(self, interaction: Interaction):
+    async def resume(self, interaction: nextcord.Interaction):
         """
         Handles the /resume command, allowing DJs to resume the currently paused song.
+
+        Parameters
+        ----------
+        interaction : :class:`nextcord.Interaction`
+            The interaction that triggered the command.
         """
         await interaction.response.defer(ephemeral=True)
         vc: WavelinkPlayer = interaction.guild.voice_client
@@ -679,16 +780,21 @@ class MusicCommands(commands.Cog):
             )
 
         await vc.pause(False)
-        await update_player_message(vc, bot_user=self.bot.user)
+        await embeds.update_player_message(vc, bot_user=self.bot.user)
         await interaction.followup.send("Playback resumed!", ephemeral=True)
 
     @nextcord.slash_command(
         name="stop", description="Stop playback and clear the queue."
     )
     @has_dj_permissions()
-    async def stop(self, interaction: Interaction):
+    async def stop(self, interaction: nextcord.Interaction):
         """
         Handles the /stop command, allowing DJs to stop playback and clear the queue.
+
+        Parameters
+        ----------
+        interaction : :class:`nextcord.Interaction`
+            The interaction that triggered the command.
         """
         await interaction.response.defer(ephemeral=True)
         vc: WavelinkPlayer = interaction.guild.voice_client
@@ -700,8 +806,8 @@ class MusicCommands(commands.Cog):
         guild_id_str = str(interaction.guild_id)
         vc.queue.clear()
 
-        if guild_id_str in ACTIVE_PLAYERS:
-            await cleanup_player_message(vc)
+        if guild_id_str in embeds.ACTIVE_PLAYERS:
+            await embeds.cleanup_player_message(vc)
 
         await vc.disconnect()
         await self.bot.change_presence(activity=None)
@@ -715,8 +821,8 @@ class MusicCommands(commands.Cog):
     @has_dj_permissions()
     async def volume(
         self,
-        interaction: Interaction,
-        value: int = SlashOption(
+        interaction: nextcord.Interaction,
+        value: int = nextcord.SlashOption(
             name="level",
             description="Set volume between 0 and 100.",
             min_value=0,
@@ -726,6 +832,13 @@ class MusicCommands(commands.Cog):
     ):
         """
         Handles the /volume command, allowing DJs to set the playback volume.
+
+        Parameters
+        ----------
+        interaction : :class:`nextcord.Interaction`
+            The interaction that triggered the command.
+        value : int
+            The volume level to set between 0 and 100.
         """
         await interaction.response.defer(ephemeral=True)
         vc: WavelinkPlayer = interaction.guild.voice_client
@@ -739,7 +852,7 @@ class MusicCommands(commands.Cog):
             )
 
         await vc.set_volume(value)
-        await update_player_message(vc, bot_user=self.bot.user)
+        await embeds.update_player_message(vc, bot_user=self.bot.user)
         await interaction.followup.send(f"Volume set to {value}%.", ephemeral=True)
 
     @nextcord.slash_command(
@@ -748,8 +861,8 @@ class MusicCommands(commands.Cog):
     @has_dj_permissions()
     async def loop(
         self,
-        interaction: Interaction,
-        mode: str = SlashOption(
+        interaction: nextcord.Interaction,
+        mode: str = nextcord.SlashOption(
             name="mode",
             description="Select the looping behavior",
             choices={
@@ -762,6 +875,24 @@ class MusicCommands(commands.Cog):
     ):
         """
         Handles the /loop command, allowing DJs to set the looping mode.
+
+        This command allows DJs to set the looping mode for the player.
+
+        Modes
+        ------
+        **none**:
+            Disable loop mode.
+        **track**:
+            Loop the currently playing track.
+        **queue**:
+            Loop the entire queue.
+
+        Parameters
+        ----------
+        interaction : :class:`nextcord.Interaction`
+            The interaction that triggered the command.
+        mode : str
+            The looping mode to set.
         """
         await interaction.response.defer(ephemeral=True)
         vc: WavelinkPlayer = interaction.guild.voice_client
@@ -779,7 +910,7 @@ class MusicCommands(commands.Cog):
 
         # 2. Update UI
         vc.queue.mode = mode_map[mode]
-        await update_player_message(vc, bot_user=self.bot.user)
+        await embeds.update_player_message(vc, bot_user=self.bot.user)
         await interaction.followup.send(
             f"🔄 Loop mode set to: **{mode.capitalize()}**.", ephemeral=True
         )
@@ -790,8 +921,8 @@ class MusicCommands(commands.Cog):
     @has_dj_permissions()
     async def autoplay(
         self,
-        interaction: Interaction,
-        mode: str = SlashOption(
+        interaction: nextcord.Interaction,
+        mode: str = nextcord.SlashOption(
             name="mode",
             description="Select the autoplay behavior",
             choices={
@@ -803,6 +934,20 @@ class MusicCommands(commands.Cog):
         """
         Handles the /autoplay command,
         allowing DJs to set the autoplay mode for continuous music playback.
+
+        Modes
+        ------
+        **enabled**:
+            Enable continuous music playback.
+        **disabled**:
+            Disable continuous music playback.
+
+        Parameters
+        ----------
+        interaction : :class:`nextcord.Interaction`
+            The interaction that triggered the command.
+        mode : str
+            The autoplay mode to set.
         """
         await interaction.response.defer(ephemeral=True)
         vc: WavelinkPlayer = interaction.guild.voice_client
@@ -812,22 +957,17 @@ class MusicCommands(commands.Cog):
         }
         if not vc:
             # Store the preference even if not connected, but inform the user
-            GUILD_AUTOPLAY_MODES[str(interaction.guild_id)] = mode_map[mode]
+            embeds.GUILD_AUTOPLAY_MODES[str(interaction.guild_id)] = mode_map[mode]
             return await interaction.followup.send(
                 "I'm not connected to any voice channel. Autoplay preference saved.",
                 ephemeral=True,
             )
 
-        mode_map = {
-            "enabled": wavelink.AutoPlayMode.enabled,
-            "disabled": wavelink.AutoPlayMode.disabled,
-        }
-
-        GUILD_AUTOPLAY_MODES[str(interaction.guild_id)] = mode_map[mode]
+        embeds.GUILD_AUTOPLAY_MODES[str(interaction.guild_id)] = mode_map[mode]
 
         if vc:
             vc.autoplay = mode_map[mode]
-            await update_player_message(vc, bot_user=self.bot.user)
+            await embeds.update_player_message(vc, bot_user=self.bot.user)
         logger.info(f"Autoplay mode set to: {mode}")
         await interaction.followup.send(
             f"Autoplay mode has been set to: **{mode.capitalize()}**", ephemeral=True
@@ -840,8 +980,8 @@ class MusicCommands(commands.Cog):
     @has_dj_permissions()
     async def remove(
         self,
-        interaction: Interaction,
-        position: int = SlashOption(
+        interaction: nextcord.Interaction,
+        position: int = nextcord.SlashOption(
             name="position",
             description="The track number to remove from the queue.",
             min_value=1,
@@ -851,6 +991,13 @@ class MusicCommands(commands.Cog):
         """
         Handles the /remove command, allowing DJs to remove a specific track
         from either the regular queue or the automated recommendations queue.
+
+        Parameters
+        ----------
+        interaction : :class:`nextcord.Interaction`
+            The interaction that triggered the command.
+        position : int
+            The track number to remove from the queue.
         """
         await interaction.response.defer(ephemeral=True)
         vc: WavelinkPlayer = interaction.guild.voice_client
@@ -912,7 +1059,7 @@ class MusicCommands(commands.Cog):
             queue_type = "Auto-Queue (Autoplay)"
 
         # 5. Dynamic visual UI updates to avoid text panel drift
-        await update_player_message(vc, bot_user=self.bot.user)
+        await embeds.update_player_message(vc, bot_user=self.bot.user)
 
         await interaction.followup.send(
             f"🗑️ Removed track: **{removed_track.title}** "
@@ -921,7 +1068,9 @@ class MusicCommands(commands.Cog):
         )
 
     @commands.Cog.listener()
-    async def on_application_command_error(self, interaction: Interaction, error):
+    async def on_application_command_error(
+        self, interaction: nextcord.Interaction, error
+    ):
         """
         Centralized error handler for all application commands.
         Handles Wavelink-specific infrastructure failures
@@ -980,8 +1129,17 @@ class MusicCommands(commands.Cog):
             await self._respond(interaction, str(error))
             return
 
-    async def _respond(self, interaction: Interaction, msg: str):
-        """Helper to handle response dispatching."""
+    async def _respond(self, interaction: nextcord.Interaction, msg: str):
+        """
+        Helper to handle response dispatching.
+
+        Arguments
+        ---------
+        interaction: Interaction
+            The interaction that triggered the error.
+        msg: str
+            The message to send.
+        """
         if not interaction.response.is_done():
             await interaction.response.send_message(msg, ephemeral=True)
         else:

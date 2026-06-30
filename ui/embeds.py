@@ -1,3 +1,30 @@
+"""
+ui/embeds.py
+Embeds for the music bot
+
+This module provides functions for generating and updating embeds for the music bot.
+
+Origin:
+- Author: Jerlo De Leon
+- Date: 2026-06-30
+
+Global Variables:
+-----------------
+- ACTIVE_PLAYERS: A dictionary to track active players, keyed by guild ID.
+- GUILD_AUTOPLAY_MODES: A dictionary to track autoplay modes, keyed by guild ID.
+- VOTE_SKIPS: A dictionary to track vote skips, keyed by guild ID.
+- MESSAGE_DELETE_TIMEOUT: The timeout for message deletion in seconds.
+
+Functions:
+- format_time(ms): Formats milliseconds into M:SS.
+- get_track_artwork(track): Retrieves the best available artwork for a track.
+- create_now_playing_embed(player, track, is_persistent=True):
+Creates an embed for the Now Playing message.
+- update_player_message(player, track, is_persistent=True):
+Updates the player message with the current track.
+- cleanup_player_message(player): Cleans up the player message after a track ends.
+"""
+
 import nextcord
 import wavelink
 

@@ -91,7 +91,7 @@ async def test_stop_command_success(guild_id, mock_bot_presence, cog):
 
     interaction.guild.voice_client.queue.clear.assert_called_once()
     interaction.guild.voice_client.disconnect.assert_called_once()
-    assert cleanup_player_message(player)
+    await cleanup_player_message(player)
     mock_bot_presence.assert_called_once_with(activity=None)
 
 

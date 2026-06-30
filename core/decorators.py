@@ -1,3 +1,14 @@
+"""
+core/decorators.py
+
+This module contains custom decorators for Nextcord application commands.
+
+Functions
+---------
+has_dj_permissions()
+    A custom Nextcord application command check decorator.
+"""
+
 import nextcord
 from nextcord.ext import application_checks
 
@@ -7,6 +18,10 @@ def has_dj_permissions():
     A custom Nextcord application command check decorator.
     Allows execution if the user is the Server Owner, an Administrator,
     or possesses a role explicitly named 'DJ' (case-insensitive).
+
+    Returns
+    -------
+    :class:`nextcord.ext.commands.Check`
     """
 
     async def predicate(interaction: nextcord.Interaction) -> bool:

@@ -1,3 +1,20 @@
+"""
+core/setup.py
+
+This module contains functions for setting up the music system.
+
+Functions
+---------
+create_node() -> wavelink.Node
+    Creates and returns a configured Wavelink node.
+
+recover_lavalink_session(bot: commands.Bot, players: list[wavelink.Player])
+    Establish a fresh node and migrate orphaned players to it.
+
+get_diagnostic_message(error: Exception) -> str
+    Generates a standardized diagnostic message for the music system.
+"""
+
 import os
 
 import wavelink

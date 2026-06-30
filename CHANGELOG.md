@@ -3,28 +3,24 @@
 All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [1.1.1] - 2026-06-25 (In Progress)
+## [1.1.1] - 2026-06-30
 
 ### Added
-
-* **Loop Modes**: Integrated `loop_all` functionality to the queue system.
-* **Slash Options**: Migrated `/play`, `/volume`, `/loop`, and `/remove` commands to structured slash options, improving UI consistency.
-* **Testing**: Expanded the high-fidelity test suite to 64 cases, achieving 100% logic coverage for audio event lifecycle.
-* **Persistent UI Infrastructure**: Introduced a unified `embed` helper suite in `ui/embeds.py` (`send_player_now_playing`, `update_player_message`) to manage dashboard states across channels, eliminating flicker and improving message persistence.
+- **Self-Healing Infrastructure**: Added autonomous Lavalink session recovery (`wavelink.Pool.close()`) to handle stale sessions, node drops, and `ChannelTimeoutException` without requiring manual bot restarts.
+- **Persistent Dashboard**: Implemented a resilient persistent player dashboard in `ui/embeds.py` utilizing an "Edit-if-exists, Send-if-not" pattern to maintain interaction stability and avoid message flicker or API spam.
+- **Enhanced Logging**: Added a custom `ColorFormatter` in `core/logging.py` for high-visibility terminal debugging alongside plain-text rotating file persistence.
+- **Troubleshooting & Privacy/Legal**: Appended troubleshooting guides and platform compliance statements to `README.MD`.
 
 ### Changed
-
-* **Loop Logic**: Overhauled `/loop` command from a binary toggle to a multi-mode selection system (None/Track/Queue).
-* **Playback Architecture**: Implemented "Autoplay-first" logic, prioritizing native Wavelink event handling and eliminating redundant manual cleanup tasks (`AUTO_DISCONNECT_TASKS`).
-* **UI/UX**: Transitioned to an "Edit-if-exists, Send-if-not" dashboard update pattern for improved interaction stability.
+- **Dependency Management**: Migrated the entire project's build and dependency orchestration from `pip` to `uv`, standardizing test execution to `uv run pytest` and `uv run ptw`.
+- **Event-Driven Lifecycle**: Transitioned voice state updates from fragile legacy hacks to native Wavelink persistent event listeners (`on_wavelink_node_ready`, `on_wavelink_node_closed`).
+- **Interaction Stability**: Standardized all command endpoints to use deferred ephemeral responses followed by `followup.send()` to prevent interaction timeouts.
+- **Module Documentation**: Added extensive, standardized Google-style docstrings and origin tracking to all functions, cogs, UI components, and core modules to enhance IDE intellisense and code readability.
 
 ### Fixed
-
-* **Duplicate Tracks**: Resolved a critical race condition causing duplicate entries in the queue during `loop_all` transitions.
-* **Stability**: Neutralized Wavelink's default inactivity limits to prevent phantom disconnects.
-* **Voice Logic**: Fixed inactivity timer bugs; the bot now correctly performs live `channel.members` verification (ignoring bots) before enforcing disconnects.
-* **Race Conditions**: Resolved `/skip` logic errors where the bot would repeat the previous track.
-* **Security**: Patched high-severity vulnerabilities in `tar` and `qs` dependencies via package overrides to ensure secure documentation build pipelines.
+- Resolved 300-second disconnect bug and phantom drops caused by Wavelink inactivity tokens by manually managing token buckets and occupancy checks during rapid skips.
+- Fixed track-skipping logic to ensure manual jumps play the intended next track from the queue rather than repeating payloads.
+- Added strict connectivity guard checks (`_is_node_ready`) to block command execution when the music engine is offline, preventing zombie tasks.
 
 ---
 

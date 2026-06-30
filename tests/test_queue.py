@@ -73,7 +73,7 @@ async def test_shuffle_command_success(cog):
 
 
 @pytest.mark.asyncio
-@patch("cogs.music_commands.QueueSongList")
+@patch("cogs.music_commands.views.QueueView")
 async def test_queue_command_enforces_recommendation_limit(mock_view_class, cog):
     """
     STRESS TEST:
@@ -161,7 +161,7 @@ async def test_remove_command_invalid_position(cog):
 
 
 @pytest.mark.asyncio
-@patch("cogs.music_commands.update_player_message", new_callable=AsyncMock)
+@patch("cogs.music_commands.embeds.update_player_message", new_callable=AsyncMock)
 async def test_remove_command_auto_queue_success(mock_update, cog):
     """QA: Verify track removal from the asynchronous auto-queue container structure."""
     interaction = AsyncMock(spec=nextcord.Interaction)

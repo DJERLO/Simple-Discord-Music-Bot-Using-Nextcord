@@ -1,3 +1,31 @@
+"""
+core/logging.py
+
+This module contains functions for initializing and retrieving a logger instance
+configured with dual handlers: a colored console output and a plain text
+rotating file.
+
+Origin:
+- Author: Jerlo De Leon
+- Date: 2026-06-30
+
+Attributes
+----------
+logger : logging.Logger
+    The pre-configured logger instance.
+
+Functions
+---------
+get_logger(name: str)
+    Initializes and retrieves a logger instance configured with dual handlers:
+    a colored console output and a plain text rotating file.
+
+Returns
+-------
+:class:`logging.Logger`
+    The configured logger instance.
+"""
+
 import logging
 import sys
 from logging.handlers import RotatingFileHandler
