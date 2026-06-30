@@ -6,7 +6,6 @@ import wavelink
 
 from bot import bot as bot_instance
 from cogs.music_commands import MusicCommands
-from ui.embeds import ACTIVE_PLAYERS, AUTO_DISCONNECT_TASKS, VOTE_SKIPS
 
 
 @pytest.fixture
@@ -46,13 +45,12 @@ def mock_bot_presence():
         yield mock
 
 
-@pytest.fixture(autouse=True)
-def clean_active_players():
-    ACTIVE_PLAYERS.clear()
-    AUTO_DISCONNECT_TASKS.clear()
-    VOTE_SKIPS.clear()
-    yield
-    ACTIVE_PLAYERS.clear()
+def patch_wavelink_connected():
+    """Returns a patch context that makes the Wavelink Pool appear connected."""
+    mock_node = MagicMock()
+    mock_node.status = wavelink.NodeStatus.CONNECTED
+    # Patch the dictionary lookup that _is_node_ready uses
+    return patch("wavelink.Pool.nodes", {"test_node": mock_node})
 
 
 @pytest.fixture

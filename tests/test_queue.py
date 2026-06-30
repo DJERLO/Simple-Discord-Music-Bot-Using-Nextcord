@@ -28,15 +28,18 @@ async def test_queue_view_pagination_logic(songs, mock_user, guild_id, cog):
 @pytest.mark.asyncio
 async def test_clearqueue_command(cog):
     interaction = AsyncMock(spec=nextcord.Interaction)
-    interaction.response.send_message = AsyncMock()
+    interaction.response.defer = AsyncMock()
+    interaction.followup.send = AsyncMock()
     interaction.guild.voice_client.queue.clear = MagicMock()
     interaction.guild.voice_client.auto_queue.clear = MagicMock()
+    interaction.guild.voice_client.queue.is_empty = False
+    interaction.guild.voice_client.auto_queue.is_empty = False
 
     await cog.clearqueue.callback(cog, interaction)
 
     interaction.guild.voice_client.queue.clear.assert_called_once()
     interaction.guild.voice_client.auto_queue.clear.assert_called_once()
-    interaction.response.send_message.assert_called_with(
+    interaction.followup.send.assert_called_with(
         "The music queue has been cleared.", ephemeral=True
     )
 
@@ -44,7 +47,8 @@ async def test_clearqueue_command(cog):
 @pytest.mark.asyncio
 async def test_shuffle_command_success(cog):
     interaction = AsyncMock(spec=nextcord.Interaction)
-    interaction.response.send_message = AsyncMock()
+    interaction.response.defer = AsyncMock()
+    interaction.followup.send = AsyncMock()
 
     # Mocking the VC
     mock_vc = AsyncMock(spec=WavelinkPlayer)
@@ -63,27 +67,31 @@ async def test_shuffle_command_success(cog):
     mock_vc.queue.shuffle.assert_called_once()
 
     # Updated assertion for the new message
-    interaction.response.send_message.assert_called_with(
+    interaction.followup.send.assert_called_with(
         "The queue has been shuffled.", ephemeral=True
     )
 
 
 @pytest.mark.asyncio
-@patch("cogs.music_commands.QueueSongList")
+@patch("cogs.music_commands.views.QueueView")
 async def test_queue_command_enforces_recommendation_limit(mock_view_class, cog):
-    """STRESS TEST:
-    Confirms UI slices recommendations even if internal queue is flooded."""
+    """
+    STRESS TEST:
+    Confirms UI slices recommendations even if internal queue is flooded.
+    """
     interaction = AsyncMock(spec=nextcord.Interaction)
-    interaction.response.send_message = AsyncMock()
-    interaction.original_message = AsyncMock()
+    interaction.response.defer = AsyncMock()
+    interaction.followup.send = AsyncMock()
+    mock_msg = AsyncMock(spec=nextcord.Message)
+    interaction.original_message = AsyncMock(return_value=mock_msg)
+
     interaction.guild_id = 123
     mock_player = AsyncMock(spec=WavelinkPlayer)
-    mock_player.autoplay = wavelink.AutoPlayMode.partial
+    mock_player.autoplay = wavelink.AutoPlayMode.enabled
     mock_player.queue = []
-    mock_player.auto_queue = MagicMock(spec=wavelink.Queue)
-    mock_player.auto_queue.is_empty = False
+
     tracks = [MagicMock(spec=wavelink.Playable) for _ in range(20)]
-    mock_player.auto_queue.__iter__.return_value = iter(tracks)
+    mock_player.auto_queue = tracks
 
     interaction.guild.voice_client = mock_player
 
@@ -91,8 +99,9 @@ async def test_queue_command_enforces_recommendation_limit(mock_view_class, cog)
 
     args, _ = mock_view_class.call_args
     songs_list = args[0]
-    # Should be exactly 5 recommendations displayed
-    assert len(songs_list) == 5
+
+    # This will now pass once you implement the slice in music_commands.py
+    assert len(songs_list) == 10
 
 
 @pytest.mark.asyncio
@@ -102,7 +111,8 @@ async def test_remove_command_success(cog):
     regular queue position using 1-based indexing.
     """
     interaction = AsyncMock(spec=nextcord.Interaction)
-    interaction.response.send_message = AsyncMock()
+    interaction.response.defer = AsyncMock()
+    interaction.followup.send = AsyncMock()
     mock_vc = AsyncMock(spec=WavelinkPlayer)
     mock_track = MagicMock(spec=wavelink.Playable)
     mock_track.title = "Target Track"
@@ -115,7 +125,7 @@ async def test_remove_command_success(cog):
     # With 1-based indexing, position=1 targets index 0
     await cog.remove.callback(cog, interaction, position=1)
 
-    interaction.response.send_message.assert_called_with(
+    interaction.followup.send.assert_called_with(
         "🗑️ Removed track: **Target Track** from position `1` (Regular Queue).",
         ephemeral=True,
     )
@@ -125,7 +135,8 @@ async def test_remove_command_success(cog):
 async def test_remove_command_invalid_position(cog):
     """QA: Verify guard against out-of-bounds queue indices and empty states."""
     interaction = AsyncMock(spec=nextcord.Interaction)
-    interaction.response.send_message = AsyncMock()
+    interaction.response.defer = AsyncMock()
+    interaction.followup.send = AsyncMock()
     mock_vc = AsyncMock(spec=WavelinkPlayer)
 
     # 1. Test completely empty queues guard
@@ -134,7 +145,7 @@ async def test_remove_command_invalid_position(cog):
     interaction.guild.voice_client = mock_vc
 
     await cog.remove.callback(cog, interaction, position=5)
-    interaction.response.send_message.assert_called_with(
+    interaction.followup.send.assert_called_with(
         "The music queue is currently empty.", ephemeral=True
     )
 
@@ -143,18 +154,19 @@ async def test_remove_command_invalid_position(cog):
     mock_vc.queue = [mock_track]  # Total length = 1
 
     await cog.remove.callback(cog, interaction, position=3)
-    interaction.response.send_message.assert_called_with(
+    interaction.followup.send.assert_called_with(
         "Invalid position. Please choose a track number between 1 and 1.",
         ephemeral=True,
     )
 
 
 @pytest.mark.asyncio
-@patch("cogs.music_commands.update_player_message", new_callable=AsyncMock)
+@patch("cogs.music_commands.embeds.update_player_message", new_callable=AsyncMock)
 async def test_remove_command_auto_queue_success(mock_update, cog):
     """QA: Verify track removal from the asynchronous auto-queue container structure."""
     interaction = AsyncMock(spec=nextcord.Interaction)
-    interaction.response.send_message = AsyncMock()
+    interaction.response.defer = AsyncMock()
+    interaction.followup.send = AsyncMock()
     mock_vc = AsyncMock(spec=WavelinkPlayer)
 
     regular_track = MagicMock(spec=wavelink.Playable)
@@ -187,7 +199,7 @@ async def test_remove_command_auto_queue_success(mock_update, cog):
     mock_vc.auto_queue.clear.assert_called_once()
     mock_vc.auto_queue.put.assert_called_once_with(auto_track2)
 
-    interaction.response.send_message.assert_called_with(
+    interaction.followup.send.assert_called_with(
         "🗑️ Removed track: "
         "**Autoplay Track 1** from position `2` (Auto-Queue (Autoplay)).",
         ephemeral=True,

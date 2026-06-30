@@ -1,22 +1,38 @@
-import asyncio
-import logging
+"""
+cogs/events.py
+
+This module contains event handlers for various audio-related events,
+including voice state updates for auto-disconnect logic and
+Wavelink track lifecycle events for dynamic player interface management.
+
+Origin:
+- Author: Jerlo De Leon
+- Date: 2026-06-30
+
+Classes
+-------
+AudioEvents
+    Cog dedicated to handling audio-related events.
+"""
+
 import time
 
 import nextcord
 import wavelink
 from nextcord.ext import commands
 
+from cogs.music_commands import WavelinkPlayer
+from core.logging import get_logger
+from core.setup import recover_lavalink_session
 from ui.embeds import (
-    ACTIVE_PLAYERS,
-    AUTO_DISCONNECT_TASKS,
     MESSAGE_DELETE_TIMEOUT,
-    VOICE_DISCONNECT_TIMEOUT,
     VOTE_SKIPS,
-    create_now_playing_embed,
-    format_time,
+    cleanup_player_message,
+    send_player_now_playing,
+    update_player_message,
 )
 
-logger = logging.getLogger("MusicBot")
+logger = get_logger(__name__)
 
 
 class AudioEvents(commands.Cog):
@@ -24,171 +40,183 @@ class AudioEvents(commands.Cog):
     Cog dedicated to handling all audio-related events,
     including voice state updates for auto-disconnect logic and
     Wavelink track lifecycle events for dynamic player interface management.
+
+    Attributes
+    ----------
+    bot : Instance of :class:`nextcord.ext.commands.Bot`
+        The main bot instance.
+    inactive_timeout : int
+        The number of seconds to wait before automatically disconnecting
+        from an inactive voice channel.
+    inactive_channel_tokens : int
+        The number of songs to play before automatically disconnecting
+        from an inactive voice channel.
+
+    Methods
+    -------
+    on_voice_state_update (member, before, after) :
+        Handles voice state updates for auto-disconnect logic.
+    on_wavelink_track_start(payload):
+        Handles the logic for when a new track starts playing.
+    on_wavelink_track_end(payload):
+        Handles the logic for when a track finishes playing.
+    on_wavelink_track_stuck(payload):
+        Handles tracks that fail to play, preventing the player
+        from hanging indefinitely in the voice channel.
+    on_wavelink_track_exception(payload):
+        Handles tracks that encounter exceptions during playback.
+    on_wavelink_websocket_closed(payload):
+        Called when the websocket to the voice server is closed.
+    on_wavelink_node_ready(payload):
+        Called when the Node you are connecting to has initialised and successfully
+        connected to Lavalink.
+    on_wavelink_node_closed(node, disconnected):
+        Called when a node has been closed and cleaned up.
+    on_wavelink_node_disconnected(payload):
+        Called when the playerUpdate OP is received from Lavalink.
+    on_wavelink_stats_update(payload):
+        Called when the stats OP is received by Lavalink.
+    on_wavelink_inactive_player(player):
+        - Triggered when the inactive_timeout countdown expires or
+        - Triggered when the inactive_channel_tokens limit is reached to 0.
+    on_wavelink_player_update(payload):
+        Called when the playerUpdate OP is received from Lavalink.
     """
 
     def __init__(self, bot: commands.Bot):
         self.bot = bot
+        self.inactive_timeout = 300
+        self.inactive_channel_tokens = 3
 
     @commands.Cog.listener()
-    async def on_voice_state_update(self, member, before, after):
-        # Ignore bot's own voice state changes to prevent logic collisions during moves
-        if member.bot:
+    async def on_voice_state_update(
+        self,
+        member: nextcord.Member,
+        before: nextcord.VoiceState,
+        after: nextcord.VoiceState,
+    ):
+        """
+        Monitors voice channel activity to manage the Wavelink player's
+        inactivity timeout.
+
+        This listener automatically triggers when a member joins
+        or leaves a voice channel.
+        It adjusts the 'inactive_timeout' property of the WavelinkPlayer
+        to ensure the bot disconnects automatically when the channel
+        is empty, and cancels any pending disconnection
+        if a human joins the channel.
+
+        Attributes
+        ----------
+        member : nextcord.Member
+            The member whose voice state changed.
+        before : nextcord.VoiceState
+            The voice state of the member prior to the change.
+        after : nextcord.VoiceState
+            The voice state of the member after the change.
+        """
+        if member.id == self.bot.user.id:
             return
 
-        # Get the voice client for the server
-        vc = member.guild.voice_client
-        if not vc:
+        vc: WavelinkPlayer = member.guild.voice_client
+
+        if not vc or not vc.channel:
             return
 
-        old_channel = before.channel
-        new_channel = after.channel
-        guild_id = str(member.guild.id)
+        # 2. Check if a human joined the bot's channel
+        if after.channel == vc.channel and before.channel != vc.channel:
+            # HUMAN JOINED: Cancel the timeout immediately
+            vc.inactive_timeout = None
+            vc.inactive_channel_tokens = None
+            logger.info(f"Human joined {vc.channel.name}. Inactivity timer cancelled.")
 
-        # Scenario A: The bot was left alone in an empty channel
-        if old_channel and vc.channel == old_channel:
-            # Count human users remaining in the channel
-            human_count = sum(1 for m in old_channel.members if not m.bot)
+        # 3. Check if a human left the bot's channel
+        elif before.channel == vc.channel and after.channel != vc.channel:
+            human_members = [m for m in vc.channel.members if not m.bot]
 
-            if human_count == 0:
-                # If a countdown task is already running for this guild, do nothing
-                if guild_id in AUTO_DISCONNECT_TASKS:
-                    return
-
+            # If the channel is now empty: Start the timeout
+            if not human_members:
+                vc.inactive_timeout = self.inactive_timeout
+                vc.inactive_channel_tokens = self.inactive_channel_tokens
                 logger.info(
-                    f"Empty channel detected in guild {guild_id}. "
-                    f"Starting {VOICE_DISCONNECT_TIMEOUT}s disconnect timer."
+                    f"Channel {vc.channel.name} emptied. "
+                    f"Inactivity timer set to {self.inactive_timeout}."
                 )
-
-                # Define the background cleanup task
-                async def disconnect_timeout():
-                    """
-                    Waits for the specified timeout and disconnects the bot
-                    if still alone.
-
-                    This function re-checks the channel state after the sleep to
-                    ensure that
-
-                    the bot is still alone before disconnecting, preventing
-                    race conditions.
-                    """
-                    try:
-                        await asyncio.sleep(VOICE_DISCONNECT_TIMEOUT)
-                        # Re-verify the current state of the voice client
-                        current_vc = member.guild.voice_client
-                        if (
-                            current_vc
-                            and current_vc.channel
-                            and sum(1 for m in current_vc.channel.members if not m.bot)
-                            == 0
-                        ):
-                            logger.info(
-                                f"Inactivity timer expired for guild {guild_id}."
-                            )
-                            # Clear state data before leaving
-                            if hasattr(current_vc, "queue"):
-                                current_vc.queue.clear()
-
-                            await self.bot.change_presence(activity=None)
-
-                            player_msg = ACTIVE_PLAYERS.get(guild_id)
-                            if player_msg:
-                                try:
-                                    channel_name = current_vc.channel.name
-                                    logger.info(
-                                        f"Bot leaving {channel_name}"
-                                        f"({guild_id}) due to inactivity."
-                                    )
-                                    await player_msg.channel.send(
-                                        f"I've left **{channel_name}** because "
-                                        "it's been empty for too long.",
-                                        delete_after=MESSAGE_DELETE_TIMEOUT,
-                                    )
-                                    await player_msg.delete()
-                                except Exception:
-                                    pass
-                                ACTIVE_PLAYERS[guild_id] = None
-
-                            await current_vc.disconnect()
-                    except asyncio.CancelledError:
-                        logger.info(
-                            f"Disconnect timer for guild {guild_id} was cancelled."
-                        )
-                    finally:
-                        AUTO_DISCONNECT_TASKS.pop(guild_id, None)
-
-                # Spin up the background task
-                task = asyncio.create_task(disconnect_timeout())
-                AUTO_DISCONNECT_TASKS[guild_id] = task
-
-        # Scenario B: A human user joined a channel where the bot is currently idling
-        if new_channel and vc.channel == new_channel:
-            human_count = sum(1 for m in new_channel.members if not m.bot)
-            if human_count > 0:
-                # Cancel the active countdown task if a human rejoins
-                task = AUTO_DISCONNECT_TASKS.pop(guild_id, None)
-                if task:
-                    logger.info(
-                        f"Human rejoined channel in guild {guild_id}. Stopping timer."
-                    )
-                    task.cancel()
-                    try:
-                        await task  # Await the task to ensure cancellation is processed
-                    except asyncio.CancelledError:
-                        pass
 
     @commands.Cog.listener()
     async def on_wavelink_track_start(self, payload: wavelink.TrackStartEventPayload):
         """
         Handles the logic for when a new track starts playing,
         including updating the player interface and bot presence.
+
+        Attributes
+        ----------
+        payload : :class:`wavelink.TrackStartEventPayload`
+            See Also: :class:`wavelink.TrackStartEventPayload`
         """
         player = payload.player
-        track = payload.track
+        track: wavelink.Playable = payload.track
         guild_id = str(player.guild.id)
         VOTE_SKIPS[guild_id] = set()  # Reset vote skips for the new track
 
-        embed = create_now_playing_embed(
-            player, track, is_persistent=True, bot_user=self.bot.user
-        )
+        # Add current playing track to history if in normal mode
+        if player.queue.mode is wavelink.QueueMode.normal:
+            # Add track to history for persistent playback
+            player.queue.history.put(track)
 
-        # Put all songs to history to allow history playback
-        player.queue.history.put(track)
         logger.info(f"Now Playing: {track.title} by {track.author}")
-        await self.bot.change_presence(
-            activity=nextcord.Activity(
-                type=nextcord.ActivityType.listening,
-                name=f"{track.title} by {track.author} [{format_time(track.length)}]",
-                timestamps={
-                    "start": int(time.time()),
-                    "end": int(time.time() + (track.length // 1000)),
-                },
-            )
+
+        activity = nextcord.Activity(
+            application_id=self.bot.user.id,
+            type=nextcord.ActivityType.listening,
+            name=f"{track.title}",
+            state=f"{track.author}",
+            timestamps={
+                "start": int(time.time()),
+                "end": int(time.time() + (track.length // 1000)),
+            },
         )
 
-        # Update or send the player interface message
-        try:
-            msg = ACTIVE_PLAYERS.get(guild_id)
-            if msg:
-                try:
-                    await msg.edit(embed=embed)
-                    return
-                except Exception:
-                    pass
-            ACTIVE_PLAYERS[guild_id] = await player.channel.send(embed=embed)
-        except Exception:
-            ACTIVE_PLAYERS[guild_id] = None
+        await self.bot.change_presence(
+            activity=activity,
+            status=nextcord.Status.online,
+        )
+
+        # Send the player interface message on the voice channel
+        await send_player_now_playing(player, self.bot.user)
 
     @commands.Cog.listener()
     async def on_wavelink_track_end(self, payload: wavelink.TrackEndEventPayload):
         """
         Handles the logic for when a track finishes playing, including queue management,
         autoplay transitions, and cleanup of the player interface.
+
+        Attributes
+        ----------
+        payload : :class:`wavelink.TrackEndEventPayload`
+            See Also: :class:`wavelink.TrackEndEventPayload`
         """
-        player = payload.player
+        player: wavelink.Player = payload.player
+        reason = payload.reason
+        track: wavelink.Playable = payload.track  # Current playing track
         if not player or not player.guild:
             return
 
         guild_id = str(player.guild.id)
+        logger.info(f"Track Ended: {track.title} by {track.author} | Reason: {reason}")
+
+        # Track Loop Mode
+        if player.queue.mode is wavelink.QueueMode.loop:
+            pass
+        # Queue Loop Mode
+        elif player.queue.mode is wavelink.QueueMode.loop_all:
+            # Add the current track to the end of the queue again
+            if player.queue.is_empty and not player.queue.history.is_empty:
+                assert player.queue.history is not None
+                player.queue._items.extend(player.queue.history._items)
+                player.queue.history.clear()
+            else:
+                player.queue.put(track)
 
         # 1. Handle intentional migration: if our custom flag is set, skip the cleanup
         if getattr(player, "ignore_next_cleanup", False):
@@ -197,67 +225,62 @@ class AudioEvents(commands.Cog):
 
         # 2. Handle track replacement: if the song was replaced by /play, do nothing
         if payload.reason == "replaced":
+            logger.info(
+                f"Guild {guild_id}: track replaced. "
+                f"Current track: {payload.track.title} by {payload.track.author}"
+            )
             return
 
-        # 3. Handle Looping: Replay the current track if loop is enabled
-        if getattr(player, "loop", False):
-            await player.play(payload.track)
-            return
+        # 3. Update the player interface
+        await update_player_message(player, self.bot.user)
 
         # 4. Determine the next track to play
-        # (checking user queue, then partial auto_queue)
         next_track = None
         kwargs = {}
 
-        if not player.queue.is_empty:
-            next_track = player.queue.get()
-            if player.autoplay == wavelink.AutoPlayMode.partial:
+        # If autoplay is enabled, just play the next track from the auto-queue.
+        if player.autoplay == wavelink.AutoPlayMode.enabled:
+            logger.info(
+                f"Guild {guild_id}: playing next track from auto-queue.\n"
+                f"Current track: {payload.track.title} by {payload.track.author}"
+            )
+            return
+
+        # If autoplay is disabled, check if the queue is empty.
+        if player.autoplay == wavelink.AutoPlayMode.disabled:
+            # If the queue is not empty, play the next track
+            if not player.queue.is_empty:
+                next_track = player.queue.get()
                 kwargs["populate"] = True
-                kwargs["max_populate"] = 5
-        elif player.autoplay == wavelink.AutoPlayMode.partial:
-            # If auto_queue ALREADY has songs, grab the next one
-            if not player.auto_queue.is_empty:
-                next_track = player.auto_queue.get()
-                kwargs["populate"] = True
-                kwargs["max_populate"] = 5
+                kwargs["max_populate"] = 10
+                logger.info(f"Playing next track: {next_track.title}")
+                await player.play(next_track, **kwargs)
+                return
+            # If the queue is empty, set the inactivity timeout
             else:
-                # BUG FIX:
-                # auto_queue is empty because it was skipped early or hadn't filled yet!
+                logger.info(f"Queue empty in guild {guild_id}. Player is now idling.")
                 logger.info(
-                    f"Guild {guild_id}: Auto-queue empty on track end. "
-                    f"Force populating recommendations."
+                    f"No songs left in queue. "
+                    f"Inactivity timer set to {self.inactive_timeout}."
                 )
-                kwargs["populate"] = True
-                kwargs["max_populate"] = 5
-                await player.play(payload.track, **kwargs)
+                player.inactive_timeout = self.inactive_timeout
+                await self.bot.change_presence(
+                    activity=None, status=nextcord.Status.idle
+                )
+
+                await cleanup_player_message(player)
                 return
-
-        # 5. Execute playback or handle clean disconnects
-        if next_track:
-            await player.play(next_track, **kwargs)
-        else:
-            # 6. Handle Autoplay transition
-            if player.autoplay == wavelink.AutoPlayMode.enabled:
-                return
-
-            # Only clean up the interface if the queue is empty AND autoplay is disabled
-            msg = ACTIVE_PLAYERS.get(guild_id)
-            if msg:
-                try:
-                    await msg.delete()
-                except Exception:
-                    pass
-                ACTIVE_PLAYERS[guild_id] = None
-
-            logger.info(f"Queue empty in guild {guild_id}. Disconnecting.")
-            await player.disconnect()
-            await self.bot.change_presence(activity=None)
 
     @commands.Cog.listener()
     async def on_wavelink_track_stuck(self, payload: wavelink.TrackStuckEventPayload):
         """
         Handles tracks that fail to play, preventing the player
         from hanging indefinitely in the voice channel.
+
+        Atributes
+        ---------
+        payload : :class:`wavelink.TrackStuckEventPayload`
+            See Also: :class:`wavelink.TrackStuckEventPayload`
         """
         player = payload.player
         logger.warning(
@@ -275,10 +298,215 @@ class AudioEvents(commands.Cog):
     async def on_wavelink_track_exception(
         self, payload: wavelink.TrackExceptionEventPayload
     ):
-        """Handles tracks that encounter exceptions during playback, ensuring the player
-        doesn't get stuck and provides feedback on the issue."""
-        logger.error(f"Track {payload.track.title} failed: {payload.exception.message}")
+        """
+        Handles tracks that encounter exceptions during playback, ensuring the player
+        doesn't get stuck and provides feedback on the issue.
+
+        Attributes
+        ----------
+        payload : :class:`wavelink.TrackExceptionEventPayload`
+            See Also: :class:`wavelink.TrackExceptionEventPayload`
+        """
+        logger.error(f"Track {payload.track.title} failed: {payload.exception}")
         await payload.player.skip()
+
+    @commands.Cog.listener()
+    async def on_wavelink_websocket_closed(
+        self, payload: wavelink.WebsocketClosedEventPayload
+    ):
+        """
+        Called when the websocket to the voice server is closed.
+        """
+        code = payload.code.value if hasattr(payload.code, "value") else payload.code
+        reason = payload.reason
+        by_remote = payload.by_remote if hasattr(payload, "by_remote") else False
+
+        msg = (
+            f"Voice WebSocket Closed | "
+            f"Code: {code} | "
+            f"Reason: {reason if reason else 'Unknown'} | "
+            f"By Remote: {by_remote}"
+        )
+
+        # 1. Check for intentional "Normal" closures (1000)
+        if code == 1000:
+            logger.info(msg)
+            return
+        # Disconnect on 4014
+        if code == 4014:
+            logger.info(msg)
+            return
+
+        # Now this won't trigger for the 1000/CLOSE_NORMAL case
+        if code in [4006, 4016]:
+            logger.warning(msg)
+        else:
+            logger.error(f"CRITICAL: {msg}")
+
+    @commands.Cog.listener()
+    async def on_wavelink_node_ready(
+        self, payload: wavelink.NodeReadyEventPayload
+    ) -> None:
+        """
+        Called when the Node you are connecting to has initialised and successfully
+        connected to Lavalink.
+        This event can be called many times throughout your bots lifetime,
+        as it will be called when Wavelink successfully reconnects to your node
+        in the event of a disconnect.
+
+        Payload received in the :func:`on_wavelink_node_ready` event.
+
+        Attributes
+        ----------
+        payload : :class:`wavelink.NodeReadyEventPayload`
+            See Also: :class:`wavelink.NodeReadyEventPayload`
+        """
+        logger.info(f"Lavalink {payload.node!r} is back online and ready!")
+
+    @commands.Cog.listener()
+    async def on_wavelink_node_disconnected(
+        self,
+        payload: wavelink.NodeDisconnectedEventPayload,
+    ):
+        """
+        Called when the playerUpdate OP is received from Lavalink.
+        This event contains information about a specific connected player on the node.
+
+        The default behaviour is for wavelink to attempt
+        to reconnect a disconnected Node.
+
+        This event can change that behaviour.
+
+        If you want to close this node completely see: Node.close()
+
+        This event can be used to manage
+        the currrently connected players to this Node. See: Player.switch_node()
+
+        Payload received in the :func:`on_wavelink_node_disconnected` event.
+
+        Attributes
+        ----------
+        payload : :class:`wavelink.NodeDisconnectedEventPayload`
+            See Also: :class:`wavelink.NodeDisconnectedEventPayload`
+        """
+        logger.info(f"{payload.node} is disconnected")
+
+    @commands.Cog.listener()
+    async def on_wavelink_node_closed(
+        self, node: wavelink.Node, disconnected: list[wavelink.Player]
+    ):
+        """
+        Called when a node has been closed and cleaned up.
+
+        Attributes
+        ----------
+        node : :class:`wavelink.Node`
+            See Also: :class:`wavelink.Node`
+        disconnected : list[ :class:`wavelink.Player`]
+            See Also: list[ :class:`wavelink.Player`]
+        """
+        # 1. Log the failure for infrastructure monitoring
+
+        logger.info(f"Node {node.identifier} closed.")
+        await recover_lavalink_session(self.bot, disconnected)
+
+    @commands.Cog.listener()
+    async def on_wavelink_stats_update(self, payload: wavelink.StatsEventPayload):
+        """
+        Called when the stats OP is received by Lavalink.
+        Payload received in the :func:`on_wavelink_stats_update` event.
+
+        Attributes
+        ----------
+        payload : :class:`wavelink.StatsEventPayload`
+            See Also: :class:`wavelink.StatsEventPayload`
+        """
+        logger.debug(
+            "Lavalink Stats Update "
+            f"| Players: {payload.players} "
+            f"| Playing: {payload.playing} "
+            f"| Uptime: {payload.uptime}ms "
+            f"| Memory: {payload.memory} "
+            f"| CPU: {payload.cpu} "
+            f"| Frames: {payload.frames}"
+        )
+
+    @commands.Cog.listener()
+    async def on_wavelink_inactive_player(self, player: WavelinkPlayer):
+        """
+        Triggered when the inactive_timeout countdown expires for the specific Player.
+
+        Attributes
+        ----------
+        player : :class:`wavelink.Player`
+            See Also: :class:`wavelink.Player`
+        """
+        logger.info(
+            f"Guild {player.guild.id} timed out after {player.inactive_timeout}s."
+        )
+
+        # 1. Clean up active player message/dashboard if it exists
+        await cleanup_player_message(player)
+
+        # 2. Clear state, queue, and auto_queue
+        player.queue.clear()
+        if hasattr(player, "auto_queue"):
+            player.auto_queue.clear()
+
+        # 3. Send goodbye message to the voice channel's text chat
+        try:
+            if player.channel:
+                channel_name = player.channel.name
+                human_count = sum(1 for m in player.channel.members if not m.bot)
+                if human_count == 0:
+                    msg_text = (
+                        f"I've left **{channel_name}** because "
+                        "it's been empty for too long."
+                    )
+                else:
+                    msg_text = (
+                        f"I've left **{channel_name}** because "
+                        "it's been inactive for too long."
+                    )
+
+                await player.channel.send(
+                    msg_text,
+                    delete_after=MESSAGE_DELETE_TIMEOUT,
+                )
+        except Exception as e:
+            logger.error(f"Error sending inactivity leave message: {e}")
+
+        # 5. Disconnect and clear presence
+        try:
+            await player.disconnect()
+        except Exception as e:
+            logger.error(f"Error disconnecting player: {e}")
+
+        await self.bot.change_presence(activity=None)
+
+    @commands.Cog.listener()
+    async def on_wavelink_player_update(
+        self, payload: wavelink.PlayerUpdateEventPayload
+    ):
+        """
+        Called when the playerUpdate OP is received from Lavalink.
+        This event contains information about a specific connected player on the node.
+
+        Payload received in the :func:`on_wavelink_player_update` event.
+
+        Attributes
+        ----------
+        payload : :class:`wavelink.PlayerUpdateEventPayload`
+            See Also: :class:`wavelink.PlayerUpdateEventPayload`
+        """
+        logger.debug(
+            f"Lavalink Player Update | "
+            f"Player: {payload.player} | "
+            f"Time: {payload.time} | "
+            f"Position: {payload.position} | "
+            f"Connected: {payload.connected} | "
+            f"Ping: {payload.ping}"
+        )
 
 
 def setup(bot: commands.Bot):

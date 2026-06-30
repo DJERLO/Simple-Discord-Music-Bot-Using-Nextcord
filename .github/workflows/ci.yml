@@ -16,43 +16,33 @@ jobs:
     # Run three parallel test runners across your stated Python version tiers
     strategy:
       matrix:
-        python-version: ["3.12", "3.13", "3.14-dev"]
+        python-version: ["3.12", "3.13", "3.14"]
       fail-fast: false # Don't cancel other versions if one experimental run fails
 
     steps:
 
     - name: Checkout Codebase
-      uses: actions/checkout@v4
+      uses: actions/checkout@v7
 
-    - name: Set up Python ${{ matrix.python-version }}
-      uses: actions/setup-python@v5
+    - name: Install uv and Setup Python
+      uses: astral-sh/setup-uv@v3
       with:
-        python-version: ${{ matrix.python-version }}
-        cache: "pip"
+        enable-cache: true
+        version: latest
 
     - name: Install Dependencies
-      run: |
-        python -m pip install --upgrade pip
-        
-        # If the runner environment is Python 3.13 or 3.14-dev, pre-inject the LTS bridge
-        if [[ "${{ matrix.python-version }}" == "3.13" || "${{ matrix.python-version }}" == "3.14-dev" ]]; then
-          echo "Modern Python engine detected (${{ matrix.python-version }}). Pre-installing audioop-lts..."
-          pip install audioop-lts
-        fi
-        
-        pip install -r requirements.txt
+      run: uv sync --python ${{ matrix.python-version }}
 
     - name: Run Ruff Linter
-      run: ruff check .
+      run: uv run ruff check .
 
     - name: Run Ruff Formatter Check
-      run: ruff format . --check
+      run: uv run ruff format . --check
 
     - name: Run Unit Test Suite
       env:
         PYTHONPATH: .
-        # This maps your encrypted GitHub Repository Secrets into the test runtime
         BOT_TOKEN: ${{ secrets.BOT_TOKEN }}
         LAVALINK_URI: ${{ secrets.LAVALINK_URI }}
         LAVALINK_PASSWORD: ${{ secrets.LAVALINK_PASSWORD }}
-      run: pytest tests/ -v
+      run: uv run --python ${{ matrix.python-version }} pytest tests/ -v

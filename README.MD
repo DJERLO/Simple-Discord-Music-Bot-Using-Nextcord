@@ -1,5 +1,5 @@
 # Simple Discord Music Bot Using Nextcord
-
+[![uv](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/astral-sh/uv/main/assets/badge/v0.json)](https://github.com/astral-sh/uv)
 [![Code style: ruff](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/astral-sh/ruff/main/assets/badge/v2.json)](https://github.com/astral-sh/ruff)
 [![Python Support](https://img.shields.io/badge/python-3.12%20--%203.14-blue.svg)](https://www.python.org/)
 [![Documentation](https://img.shields.io/badge/docs-Mintlify-24b47e?style=flat&logo=bookstack&logoColor=white)](https://mintlify.wiki/DJERLO/Simple-Discord-Music-Bot-Using-Nextcord/)
@@ -38,6 +38,15 @@ For my version, I used **Nextcord** as the main Discord API wrapper.
 
 Clone the repo, install dependencies, start Lavalink via Docker, and play your first song in Discord — all in under ten minutes.
 
+```bash
+git clone https://github.com/DJERLO/Simple-Discord-Music-Bot-Using-Nextcord/
+cd Simple-Discord-Music-Bot-Using-Nextcord
+
+docker compose up -d
+uv sync
+uv run python bot.py
+```
+
 ### 📋 Prerequisites
 
 Make sure the following are installed and available in your system terminal before continuing:
@@ -60,26 +69,42 @@ git clone https://github.com/DJERLO/Simple-Discord-Music-Bot-Using-Nextcord.git
 cd Simple-Discord-Music-Bot-Using-Nextcord
 ```
 
-### 2. Configure Environment Variables
+## 2. Configure Environment Variables
 
-Create a `.env` file in the root directory to store your credentials. The bot uses these to authenticate with Discord and connect to the Lavalink node:
+Copy the example environment file:
+
+```bash
+# Linux / macOS
+cp .env.example .env
+
+# Windows (PowerShell)
+Copy-Item .env.example .env
+```
+
+Open `.env` and update the required values:
 
 ```env
 # Discord Bot Authentication
 BOT_TOKEN=your_unique_bot_token_here
 
-# Lavalink Connection (Defaults)
+# Lavalink Connection
 LAVALINK_URI=http://127.0.0.1:2333
 LAVALINK_PASSWORD=youshallnotpass
 ```
-> [!WARNING]
-> Never commit the .env file to version control. It is already listed in .gitignore for your protection — do not remove it from that list.
 
-How to get your token:
-1. Go to the [ Discord Developer Portal](https://discord.com/developers/applications).
-2. Select your application (or create one) and open the Bot tab
-3. Click Reset Token to reveal a fresh token, then copy it immediately
-4. Paste it into your .env file as shown below
+> [!TIP]
+> The default Lavalink values work with the included `docker-compose.yml`. You only need to change them if you're connecting to a different Lavalink server.
+
+> [!WARNING]
+> Never commit your `.env` file to version control. The repository includes `.gitignore` rules to prevent this automatically.
+
+### Obtaining a Discord Bot Token
+
+1. Open the [ Discord Developer Portal](https://discord.com/developers/applications).
+2. Create a new application or select an existing one.
+3. Navigate to **Bot**.
+4. Click **Reset Token** (or **Copy Token** if one already exists).
+5. Paste the token into the `BOT_TOKEN` field of your `.env` file.
 
 ### 3. Lavalink Server (Docker)
 
@@ -100,7 +125,26 @@ You should see a container named lavalink_node with status Up.
 
 ### 4. Python Environment
 Install the necessary dependencies:
+
+#### Using uv:
 ```bash
+# Sync dependencies and create environment automatically
+uv sync
+```
+
+If you need to install a specific Python version first:
+```bash
+uv python install 3.13
+uv sync
+```
+> [!TIP]
+> The project utilizes a .python-version file to ensure consistency. When you run uv sync, it automatically reads this file to ensure your environment uses the exact version of Python required by the project.
+
+#### Legacy Workflow (pip)
+If you prefer not to use uv, you can manage the environment manually:
+```bash
+python -m venv .venv
+source .venv/bin/activate  # On Windows use: .venv\Scripts\Activate.ps1
 pip install -r requirements.txt
 ```
 *This installs the following core packages:*
@@ -135,12 +179,35 @@ When generating your bot invite link via the **OAuth2 URL Generator** in the Dis
 > [!IMPORTANT]
 >  You must also enable Message Content Intent in the Discord Developer Portal under your application’s Bot → Privileged Gateway Intents section, otherwise Discord will silently deny the intent and certain bot behaviors may not function correctly.
 
-### 6. Run the Bot
-With Lavalink running and your .env file in place, start the bot:
+## 6. Run the Bot
 
+Choose the workflow that matches your environment.
+
+### Option 1 — Recommended (uv)
+
+If you're using `uv`, there's no need to activate a virtual environment.
+
+```bash
+uv run python bot.py
+```
+
+> [!TIP]
+> If you don't have Python installed, `uv` can download and manage Python for you automatically:
+>
+> ```bash
+> uv python install 3.13
+> uv sync
+> uv run python bot.py
+> ```
+
+### Option 2 — Traditional (pip)
+After activating your virtual enviroment from [Step 4](#legacy-workflow-pip) at Python enviroment legacy workflow setup.
+
+Run the bot:
 ```bash
 python bot.py
 ```
+
 > [!NOTE]
 > Lavalink must be running before you start bot.py. The bot connects to the Lavalink node during its on_ready event — if the node is unreachable at startup, the bot will fail to initialize audio playback.
 
@@ -161,13 +228,13 @@ We maintain high code quality using `pytest`. We've implemented a "watchdog" sys
 ### Running the Verification Matrix
 Execute the full test suite natively from the project root:
 ```bash
-pytest tests/ -v
+uv run pytest tests/ -v
 ```
 
 ### Development Watchdog
 To prevent breaking the bot during active development, use `pytest-watch`. This will monitor your files and automatically re-run tests every time you save a change:
 ```bash
-ptw
+uv run ptw
 ```
 > [!TIP]
 > Run `ptw` in a separate terminal while you work. It monitors all Python files in the project and re-runs the full test suite the moment you save a change, giving you continuous pass/fail feedback without switching windows.
@@ -211,6 +278,19 @@ This workflow ensures that:
 > 3. **SoundCloud**
 >
 > ❌ **Spotify and Apple Music links are not supported out-of-the-box in this release.** Passing these links will be intercepted gracefully by the bot's exception boundaries without crashing your session audio engine. Support for metadata translation proxies is slated for a future development cycle.
+
+## Troubleshooting
+
+* **Bot not responding?** Ensure your bot token has the **Message Content Intent** enabled in the [Discord Developer Portal](https://discord.com/developers/applications).
+* **Audio not playing?** Check if your Lavalink container is healthy: `docker ps`. Ensure `LAVALINK_URI` and `LAVALINK_PASSWORD` in your `.env` match your server configuration.
+* **Python version issues?** If `uv` fails to resolve the environment, run `uv python pin 3.13` to explicitly set your version, then run `uv sync`.
+* **Voice Connection issues?** Ensure the bot has "Connect" and "Speak" permissions in the specific voice channel you are trying to join.
+
+## Privacy & Legal
+
+* **Data Privacy:** This bot does not collect, store, or share any personal user data. All interaction data is processed ephemerally in memory to provide music functionality and is cleared upon restart.
+* **Terms of Service:** Users are responsible for ensuring their usage of this bot complies with the [YouTube Terms of Service](https://www.youtube.com/t/terms) and [SoundCloud Terms of Use](https://soundcloud.com/terms-of-use). This bot is intended for personal, non-commercial use only.
+
 ## License
 
 This project is licensed under the [MIT License](LICENSE).

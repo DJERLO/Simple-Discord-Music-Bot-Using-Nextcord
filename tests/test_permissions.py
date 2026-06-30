@@ -13,7 +13,8 @@ async def test_voteskip_logic_immediate_solo(cog):
     """QA: Ensure 1 listener triggers an immediate skip without voting delay."""
     interaction = AsyncMock(spec=nextcord.Interaction)
     interaction.guild_id = 123
-    interaction.response.send_message = AsyncMock()
+    interaction.response.defer = AsyncMock()
+    interaction.followup.send = AsyncMock()
     mock_vc = AsyncMock(spec=WavelinkPlayer)
     mock_vc.channel = MagicMock(spec=nextcord.VoiceChannel)
     mock_vc.playing = True
@@ -24,10 +25,7 @@ async def test_voteskip_logic_immediate_solo(cog):
     await cog.voteskip.callback(cog, interaction)
 
     mock_vc.skip.assert_called_once()
-    assert (
-        "Skipping track immediately!"
-        in interaction.response.send_message.call_args[0][0]
-    )
+    assert "Skipping track immediately!" in interaction.followup.send.call_args[0][0]
 
 
 @pytest.mark.asyncio
@@ -36,7 +34,8 @@ async def test_voteskip_logic_threshold_met(cog):
     interaction = AsyncMock(spec=nextcord.Interaction)
     interaction.guild_id = 456
     interaction.user.id = 101
-    interaction.response.send_message = AsyncMock()
+    interaction.response.defer = AsyncMock()
+    interaction.followup.send = AsyncMock()
     mock_vc = AsyncMock(spec=WavelinkPlayer)
     mock_vc.channel = MagicMock(spec=nextcord.VoiceChannel)
     mock_vc.playing = True

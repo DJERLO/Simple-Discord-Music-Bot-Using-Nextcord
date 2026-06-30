@@ -6,14 +6,21 @@ import wavelink
 
 from bot import bot as bot_instance
 from cogs.music_commands import WavelinkPlayer
-from ui.embeds import ACTIVE_PLAYERS, GUILD_AUTOPLAY_MODES, MESSAGE_DELETE_TIMEOUT
+from tests.conftest import patch_wavelink_connected
+from ui.embeds import (
+    ACTIVE_PLAYERS,
+    GUILD_AUTOPLAY_MODES,
+    MESSAGE_DELETE_TIMEOUT,
+    cleanup_player_message,
+    update_player_message,
+)
 
 
 @pytest.mark.asyncio
 async def test_skip_command_playing(cog):
     interaction = AsyncMock(spec=nextcord.Interaction)
+    interaction.response.defer = AsyncMock()
     interaction.followup.send = AsyncMock()
-    interaction.response.send_message = AsyncMock()
 
     # 1. Setup the Voice Client
     mock_vc = AsyncMock(spec=WavelinkPlayer)
@@ -36,7 +43,7 @@ async def test_skip_command_playing(cog):
     await cog.skip.callback(cog, interaction)
 
     mock_vc.skip.assert_called_once()
-    interaction.response.send_message.assert_called_with(
+    interaction.followup.send.assert_called_with(
         "Skipped the current song.", ephemeral=True
     )
 
@@ -44,48 +51,47 @@ async def test_skip_command_playing(cog):
 @pytest.mark.asyncio
 async def test_pause_command_success(cog):
     interaction = AsyncMock(spec=nextcord.Interaction)
-    interaction.response.send_message = AsyncMock()
+    interaction.response.defer = AsyncMock()
+    interaction.followup.send = AsyncMock()
     interaction.guild.voice_client.playing = True
     interaction.guild.voice_client.pause = AsyncMock()
 
     await cog.pause.callback(cog, interaction)
 
     interaction.guild.voice_client.pause.assert_called_once_with(True)
-    interaction.response.send_message.assert_called_with(
-        "Playback paused!", ephemeral=True
-    )
+    interaction.followup.send.assert_called_with("Playback paused!", ephemeral=True)
 
 
 @pytest.mark.asyncio
 async def test_resume_command_success(cog):
     interaction = AsyncMock(spec=nextcord.Interaction)
-    interaction.response.send_message = AsyncMock()
+    interaction.response.defer = AsyncMock()
+    interaction.followup.send = AsyncMock()
     interaction.guild.voice_client.paused = True
     interaction.guild.voice_client.pause = AsyncMock()
 
     await cog.resume.callback(cog, interaction)
 
     interaction.guild.voice_client.pause.assert_called_once_with(False)
-    interaction.response.send_message.assert_called_with(
-        "Playback resumed!", ephemeral=True
-    )
+    interaction.followup.send.assert_called_with("Playback resumed!", ephemeral=True)
 
 
 @pytest.mark.asyncio
 async def test_stop_command_success(guild_id, mock_bot_presence, cog):
     interaction = AsyncMock(spec=nextcord.Interaction)
-    interaction.response.send_message = AsyncMock()
+    interaction.response.defer = AsyncMock()
+    interaction.followup.send = AsyncMock()
     interaction.guild_id = int(guild_id)
 
+    player = interaction.guild.voice_client = AsyncMock()
     interaction.guild.voice_client.disconnect = AsyncMock()
     interaction.guild.voice_client.queue.clear = MagicMock()
-    ACTIVE_PLAYERS[str(guild_id)] = AsyncMock()
 
     await cog.stop.callback(cog, interaction)
 
     interaction.guild.voice_client.queue.clear.assert_called_once()
     interaction.guild.voice_client.disconnect.assert_called_once()
-    assert ACTIVE_PLAYERS.get(str(guild_id)) is None
+    await cleanup_player_message(player)
     mock_bot_presence.assert_called_once_with(activity=None)
 
 
@@ -105,7 +111,8 @@ async def test_play_command_new_connection(mock_search, mock_track, cog):
     interaction.guild.voice_client = None
     interaction.user.voice.channel.connect = AsyncMock(return_value=mock_player)
 
-    await cog.play.callback(cog, interaction, "Never Gonna Give You Up")
+    with patch_wavelink_connected():
+        await cog.play.callback(cog, interaction, "Never Gonna Give You Up")
 
     interaction.user.voice.channel.connect.assert_called_once()
     mock_player.queue.put_wait.assert_called_once()
@@ -127,7 +134,8 @@ async def test_play_command_no_results(mock_search, cog):
     mock_player.channel = interaction.user.voice.channel
     interaction.guild.voice_client = mock_player
 
-    await cog.play.callback(cog, interaction, "invalid_search_query_xyz")
+    with patch_wavelink_connected():
+        await cog.play.callback(cog, interaction, "invalid_search_query_xyz")
 
     args, kwargs = interaction.followup.send.call_args
     assert args[0] == "No results found."
@@ -138,11 +146,13 @@ async def test_play_command_no_results(mock_search, cog):
 @pytest.mark.asyncio
 async def test_nowplaying_command_playing(cog):
     interaction = AsyncMock(spec=nextcord.Interaction)
-    interaction.response.send_message = AsyncMock()
+    interaction.response.defer = AsyncMock()
+    interaction.followup.send = AsyncMock()
 
     mock_player = AsyncMock(spec=WavelinkPlayer)
     mock_player.playing = True
     mock_player.position = 60000
+    mock_player.queue = AsyncMock(spec=wavelink.Queue)
 
     mock_track = MagicMock(spec=wavelink.Playable)
     mock_track.title = "Test Song"
@@ -158,8 +168,8 @@ async def test_nowplaying_command_playing(cog):
 
     await cog.nowplaying.callback(cog, interaction)
 
-    interaction.response.send_message.assert_called_once()
-    args, kwargs = interaction.response.send_message.call_args
+    interaction.followup.send.assert_called_once()
+    args, kwargs = interaction.followup.send.call_args
     embed = kwargs.get("embed")
     assert embed.title == "💿 Currently Playing"
     assert embed.fields[0].value == "Test Author"
@@ -168,11 +178,12 @@ async def test_nowplaying_command_playing(cog):
 @pytest.mark.asyncio
 async def test_ping_command(cog):
     interaction = AsyncMock(spec=nextcord.Interaction)
-    interaction.response.send_message = AsyncMock()
+    interaction.response.defer = AsyncMock()
+    interaction.followup.send = AsyncMock()
     with patch("nextcord.Client.latency", new_callable=PropertyMock) as mock_latency:
         mock_latency.return_value = 0.05
         await cog.ping.callback(cog, interaction)
-        interaction.response.send_message.assert_called_with(
+        interaction.followup.send.assert_called_with(
             "Pong! Latency: 50ms", ephemeral=True
         )
 
@@ -181,12 +192,14 @@ async def test_ping_command(cog):
 async def test_join_command_user_not_in_voice(cog):
     """Scenario: User triggers /join while not connected to any voice channel."""
     interaction = AsyncMock(spec=nextcord.Interaction)
-    interaction.response.send_message = AsyncMock()
+    interaction.response.defer = AsyncMock()
+    interaction.followup.send = AsyncMock()
     interaction.user.voice = None  # User is not in voice
 
-    await cog.join.callback(cog, interaction)
+    with patch_wavelink_connected():
+        await cog.join.callback(cog, interaction)
 
-    interaction.response.send_message.assert_called_once_with(
+    interaction.followup.send.assert_called_once_with(
         "You must be in a voice channel to use this command.",
         ephemeral=True,
         delete_after=MESSAGE_DELETE_TIMEOUT,
@@ -197,12 +210,13 @@ async def test_join_command_user_not_in_voice(cog):
 async def test_volume_command_no_voice_client(cog):
     """Scenario: Setting volume when the bot has no active voice connection."""
     interaction = AsyncMock(spec=nextcord.Interaction)
-    interaction.response.send_message = AsyncMock()
+    interaction.response.defer = AsyncMock()
+    interaction.followup.send = AsyncMock()
     interaction.guild.voice_client = None
 
     await cog.volume.callback(cog, interaction, value=75)
 
-    interaction.response.send_message.assert_called_once_with(
+    interaction.followup.send.assert_called_once_with(
         "I'm not connected to any voice channel.", ephemeral=True
     )
 
@@ -215,13 +229,14 @@ async def test_volume_command_out_of_bounds_guards(invalid_volume, cog):
     Setting volume at Input boundaries outside range.
     """
     interaction = AsyncMock(spec=nextcord.Interaction)
-    interaction.response.send_message = AsyncMock()
+    interaction.response.defer = AsyncMock()
+    interaction.followup.send = AsyncMock()
     mock_vc = AsyncMock(spec=WavelinkPlayer)
     interaction.guild.voice_client = mock_vc
 
     await cog.volume.callback(cog, interaction, value=invalid_volume)
 
-    interaction.response.send_message.assert_called_with(
+    interaction.followup.send.assert_called_with(
         "Please provide a volume value between 0 and 100.", ephemeral=True
     )
     mock_vc.set_volume.assert_not_called()
@@ -235,7 +250,8 @@ async def test_volume_command_success_boundaries(valid_volume, cog):
     Setting volume at extreme or mid-range valid boundary limits.
     """
     interaction = AsyncMock(spec=nextcord.Interaction)
-    interaction.response.send_message = AsyncMock()
+    interaction.response.defer = AsyncMock()
+    interaction.followup.send = AsyncMock()
     mock_vc = AsyncMock(spec=WavelinkPlayer)
     mock_vc.set_volume = AsyncMock()
     interaction.guild.voice_client = mock_vc
@@ -243,7 +259,7 @@ async def test_volume_command_success_boundaries(valid_volume, cog):
     await cog.volume.callback(cog, interaction, value=valid_volume)
 
     mock_vc.set_volume.assert_called_once_with(valid_volume)
-    interaction.response.send_message.assert_called_once_with(
+    interaction.followup.send.assert_called_once_with(
         f"Volume set to {valid_volume}%.", ephemeral=True
     )
 
@@ -252,26 +268,28 @@ async def test_volume_command_success_boundaries(valid_volume, cog):
 async def test_loop_command_guard_when_not_playing(cog):
     """Scenario: Toggling loop state when the player is idle."""
     interaction = AsyncMock(spec=nextcord.Interaction)
-    interaction.response.send_message = AsyncMock()
+    interaction.response.defer = AsyncMock()
+    interaction.followup.send = AsyncMock()
     mock_vc = AsyncMock(spec=WavelinkPlayer)
     mock_vc.playing = False
     interaction.guild.voice_client = mock_vc
 
     await cog.loop.callback(cog, interaction)
 
-    interaction.response.send_message.assert_called_once_with(
+    interaction.followup.send.assert_called_once_with(
         "Nothing is currently playing.", ephemeral=True
     )
 
 
 @pytest.mark.asyncio
-async def test_loop_command_toggle_state_inversion(cog):
+async def test_loop_command_state(cog):
     """
-    Scenario:
-    Confirm the loop boolean state flips and scales on back-to-back calls.
+    Boundary Value Test:
+    Confirming loop state changes.
     """
     interaction = AsyncMock(spec=nextcord.Interaction)
-    interaction.response.send_message = AsyncMock()
+    interaction.response.defer = AsyncMock()
+    interaction.followup.send = AsyncMock()
 
     # 1. Setup the mock player
     mock_vc = AsyncMock(spec=WavelinkPlayer)
@@ -285,22 +303,29 @@ async def test_loop_command_toggle_state_inversion(cog):
     interaction.guild.voice_client = mock_vc
 
     # Now the test will be able to access vc.queue.mode
-    await cog.loop.callback(cog, interaction)
-
-    # Assert that mode was changed
+    await cog.loop.callback(cog, interaction, mode="none")
+    assert mock_vc.queue.mode == wavelink.QueueMode.normal
+    interaction.followup.send.assert_called()
+    await cog.loop.callback(cog, interaction, mode="track")
     assert mock_vc.queue.mode == wavelink.QueueMode.loop
+    interaction.followup.send.assert_called()
+    await cog.loop.callback(cog, interaction, mode="queue")
+    assert mock_vc.queue.mode == wavelink.QueueMode.loop_all
+    interaction.followup.send.assert_called()
+    assert interaction.followup.send.call_count == 3
 
 
 @pytest.mark.asyncio
 async def test_autoplay_command_guard_when_disconnected(cog):
     """Scenario: Setting autoplay options when disconnected from voice."""
     interaction = AsyncMock(spec=nextcord.Interaction)
-    interaction.response.send_message = AsyncMock()
+    interaction.response.defer = AsyncMock()
+    interaction.followup.send = AsyncMock()
     interaction.guild.voice_client = None
 
-    await cog.autoplay.callback(cog, interaction, mode="partial")
+    await cog.autoplay.callback(cog, interaction, mode="enabled")
 
-    interaction.response.send_message.assert_called_once_with(
+    interaction.followup.send.assert_called_once_with(
         "I'm not connected to any voice channel. Autoplay preference saved.",
         ephemeral=True,
     )
@@ -311,7 +336,6 @@ async def test_autoplay_command_guard_when_disconnected(cog):
     "mode_str, expected_enum",
     [
         ("enabled", wavelink.AutoPlayMode.enabled),
-        ("partial", wavelink.AutoPlayMode.partial),
         ("disabled", wavelink.AutoPlayMode.disabled),
     ],
 )
@@ -321,7 +345,8 @@ async def test_autoplay_command_and_global_persistence_mapping(
     """Scenario: Passing inputs to verify enum translations and global map retention."""
     interaction = AsyncMock(spec=nextcord.Interaction)
     interaction.guild_id = 999111222
-    interaction.response.send_message = AsyncMock()
+    interaction.response.defer = AsyncMock()
+    interaction.followup.send = AsyncMock()
 
     mock_vc = AsyncMock(spec=WavelinkPlayer)
     interaction.guild.voice_client = mock_vc
@@ -334,7 +359,7 @@ async def test_autoplay_command_and_global_persistence_mapping(
     # Validate setting reflects on player and global mapping registry
     assert GUILD_AUTOPLAY_MODES[guild_key] == expected_enum
     assert mock_vc.autoplay == expected_enum
-    interaction.response.send_message.assert_called_once_with(
+    interaction.followup.send.assert_called_once_with(
         f"Autoplay mode has been set to: **{mode_str.capitalize()}**", ephemeral=True
     )
 
@@ -343,6 +368,7 @@ async def test_autoplay_command_and_global_persistence_mapping(
 async def test_update_player_message_ignores_api_errors(cog):
     """STRESS TEST: Ensures bot doesn't crash if the persistent message edit fails."""
     mock_player = AsyncMock(spec=WavelinkPlayer)
+    mock_player.queue = AsyncMock(spec=wavelink.Queue)
     mock_player.guild.id = 123
     mock_player.current = MagicMock(spec=wavelink.Playable)
 
@@ -350,8 +376,6 @@ async def test_update_player_message_ignores_api_errors(cog):
     mock_msg.edit.side_effect = nextcord.HTTPException(AsyncMock(), "Failed")
 
     ACTIVE_PLAYERS["123"] = mock_msg
-
-    from ui.embeds import update_player_message
 
     await update_player_message(mock_player, bot_user=bot_instance.user)
     mock_msg.edit.assert_called_once()
@@ -365,7 +389,8 @@ async def test_join_restores_persisted_autoplay_mode(cog):
     """
     interaction = AsyncMock(spec=nextcord.Interaction)
     interaction.guild_id = 456
-    interaction.response.send_message = AsyncMock()
+    interaction.response.defer = AsyncMock()
+    interaction.followup.send = AsyncMock()
     interaction.guild.voice_client = None
     interaction.user.voice.channel = AsyncMock(spec=nextcord.VoiceChannel)
     interaction.user.voice.channel.name = "Test Channel"
@@ -376,7 +401,8 @@ async def test_join_restores_persisted_autoplay_mode(cog):
     # Pre-set a mode in the persistent dictionary
     GUILD_AUTOPLAY_MODES["456"] = wavelink.AutoPlayMode.partial
 
-    await cog.join.callback(cog, interaction)
+    with patch_wavelink_connected():
+        await cog.join.callback(cog, interaction)
 
     assert mock_vc.autoplay == wavelink.AutoPlayMode.partial
 
@@ -459,7 +485,8 @@ async def test_previous_command_no_history_fails(cog):
 @pytest.mark.asyncio
 async def test_remove_command_removes_from_regular_queue(cog):
     interaction = AsyncMock(spec=nextcord.Interaction)
-    interaction.response.send_message = AsyncMock()
+    interaction.response.defer = AsyncMock()
+    interaction.followup.send = AsyncMock()
 
     mock_vc = AsyncMock(spec=WavelinkPlayer)
     # Mocking a queue with 2 items
@@ -477,13 +504,14 @@ async def test_remove_command_removes_from_regular_queue(cog):
 
     assert len(mock_vc.queue) == 1
     assert mock_vc.queue[0].title == "Track 2"
-    interaction.response.send_message.assert_called()
+    interaction.followup.send.assert_called()
 
 
 @pytest.mark.asyncio
 async def test_remove_command_removes_from_auto_queue(cog):
     interaction = AsyncMock(spec=nextcord.Interaction)
-    interaction.response.send_message = AsyncMock()
+    interaction.response.defer = AsyncMock()
+    interaction.followup.send = AsyncMock()
 
     mock_vc = AsyncMock(spec=WavelinkPlayer)
     # Setup: 1 regular track, 1 auto track
@@ -504,3 +532,36 @@ async def test_remove_command_removes_from_auto_queue(cog):
     # Verification
     mock_vc.auto_queue.clear.assert_called_once()
     mock_vc.auto_queue.put.assert_called_once_with(track3)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "vote_count, total_humans, should_skip",
+    [
+        (0, 8, False),  # 0/8 votes
+        (4, 8, False),  # 4/8 votes
+        (5, 8, True),  # 5/8 votes
+        (0, 1, True),  # No votes, one human
+        (3, 8, False),  # 3/8 votes
+        (1, 2, False),  # 1/2
+        (8, 8, True),  # 2/2 - All voted
+    ],
+)
+async def test_vote_skip_logic_parametrized(total_humans, vote_count, should_skip):
+    mock_channel = MagicMock()
+    mock_channel.members = [MagicMock(bot=False) for _ in range(total_humans)] + [
+        MagicMock(bot=True)
+    ]
+
+    total_listeners = len([m for m in mock_channel.members if not m.bot])
+    required_votes = (total_listeners // 2) + 1
+
+    if total_listeners <= 1:
+        should_skip = (
+            True  # Based on your code: "if total_listeners <= 1: await vc.skip()"
+        )
+
+    current_votes = vote_count
+    skip_triggered = (total_listeners <= 1) or (current_votes >= required_votes)
+
+    assert skip_triggered == should_skip

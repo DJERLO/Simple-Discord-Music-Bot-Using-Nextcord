@@ -1,3 +1,41 @@
+"""
+ui/views.py
+-----------
+A view for displaying and navigating through a music queue.
+This view allows users to see the current music queue and
+navigate through it using buttons.
+It supports pagination, allowing users to view
+a limited number of songs per page.
+
+Origin:
+- Author: Jerlo De Leon
+- Date: 2026-06-30
+
+This module defines the QueueView class, which subclasses
+nextcord.ui.View.
+
+The QueueView class is responsible for displaying the music queue
+and allowing users to navigate through it using buttons.
+It supports pagination, allowing users to view a limited number
+of songs per page.
+
+The QueueView class has the following attributes:
+- songs: The list of songs in the queue.
+- per_page: The number of songs to display per page.
+- page: The current page number.
+- guild_id: The ID of the guild this queue belongs to.
+- interaction_user: The user who initiated the interaction.
+
+The QueueView class has the following methods:
+- get_embed: Returns the embed object for the current page of the queue.
+- update_button_states: Updates the state of the pagination buttons.
+- next_page: Navigates to the next page of the queue.
+- prev_page: Navigates to the previous page of the queue.
+- interaction_check: Checks if the interaction
+is from the user who initiated the interaction.
+- on_timeout: Disables the buttons after the timeout.
+"""
+
 import nextcord
 from nextcord import ButtonStyle, Embed, Interaction
 from nextcord.ui import Button, View
@@ -12,11 +50,25 @@ class QueueView(View):
     a limited number of songs per page.
 
     Attributes:
+    ----------
         songs (list): The list of songs in the queue.
         per_page (int): The number of songs to display per page.
         page (int): The current page number.
         guild_id (str): The ID of the guild this queue belongs to.
         interaction_user (nextcord.User): The user who initiated the interaction.
+        message (nextcord.Message): The message containing the queue view.
+        update_button_states(self): Updates the state of the pagination buttons.
+
+    Methods:
+    -------
+        get_embed(self): Returns the embed object for the current page of the queue.
+        update_button_states(self): Updates the state of the pagination buttons.
+        next_page(self, button, interaction): Navigates to the next page of the queue.
+        prev_page(self, button, interaction):
+        Navigates to the previous page of the queue.
+        interaction_check(self, interaction):
+        Checks if the interaction is from the user who initiated the interaction.
+        on_timeout(self): Disables the buttons after the timeout.
     """
 
     def __init__(self, songs, interaction_user, guild_id, per_page=10):
