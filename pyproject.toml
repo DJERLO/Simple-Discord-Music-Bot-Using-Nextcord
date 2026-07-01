@@ -28,3 +28,5 @@ lint.ignore = []
 [tool.ruff.lint.isort]
 combine-as-imports = true
 
+[tool.uv]
+override-dependencies = ["pynacl>=1.6.2"]
