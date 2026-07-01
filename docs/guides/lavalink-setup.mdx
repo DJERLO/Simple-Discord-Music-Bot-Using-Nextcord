@@ -111,7 +111,7 @@ Notable configuration choices:
     From the project root (the directory containing `docker-compose.yml`), run:
 
     ```bash
-    docker-compose up -d
+    docker compose up -d
     ```
 
     The `-d` flag runs the container detached so it continues in the background after you close the terminal.
@@ -129,13 +129,13 @@ Notable configuration choices:
     To follow Lavalink's output in real time:
 
     ```bash
-    docker-compose logs lavalink
+    docker compose logs lavalink
     ```
 
     Add `-f` to stream logs continuously:
 
     ```bash
-    docker-compose logs -f lavalink
+    docker compose logs -f lavalink
     ```
   </Step>
 </Steps>
@@ -145,7 +145,7 @@ Notable configuration choices:
 To stop and remove the container:
 
 ```bash
-docker-compose down
+docker compose down
 ```
 
 This tears down the container but preserves your `application.yml` and the `logs/` directory on the host.
@@ -164,11 +164,11 @@ This tears down the container but preserves your `application.yml` and the `logs
 </Accordion>
 
 <Accordion title="Docker is not running">
-  `docker-compose up` will exit immediately with a connection error if the Docker daemon is not active. Start Docker and retry.
+  `docker compose up` will exit immediately with a connection error if the Docker daemon is not active. Start Docker and retry.
 </Accordion>
 
 <Accordion title="Container exits immediately">
-  Run `docker-compose logs lavalink` to read the startup output. A malformed `application.yml` (incorrect indentation, wrong password format) is the most common cause of an instant exit.
+  Run `docker compose logs lavalink` to read the startup output. A malformed `application.yml` (incorrect indentation, wrong password format) is the most common cause of an instant exit.
 </Accordion>
 
 ## Related Topics
@@ -182,11 +182,11 @@ This tears down the container but preserves your `application.yml` and the `logs
     Check the .env values used by the bot when it starts up.
   </Card>
 
-  <Card title="Quickstart" icon="rocket" href="/quickstart">
+  <Card title="Quickstart" icon="rocket" href="/get-started/quickstart">
     Follow the end-to-end path from setup to first playback.
   </Card>
 
-  <Card title="Configuration" icon="gear" href="/configuration">
+  <Card title="Configuration" icon="gear" href="/get-started/configuration">
     Review the full audio and permission settings used by the bot stack.
   </Card>
 </CardGroup>

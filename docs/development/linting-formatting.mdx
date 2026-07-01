@@ -9,10 +9,10 @@ We use [Ruff](https://docs.astral.sh/ruff/) to ensure our Python code is clean, 
 
 ### Installation
 
-Ruff is included in the project's development dependencies. You can ensure it is installed by running:
+Ruff is included in the project's development dependencies. Install the project's dependencies with:
 
 ```bash
-pip install ruff
+uv sync
 ```
 
 ### Usage
@@ -21,20 +21,20 @@ pip install ruff
 To check the entire project for linting errors and logical issues, run:
 
 ```bash
-ruff check .
+uv run ruff check .
 ```
 
 If you want Ruff to automatically fix safe violations (like unused imports), use:
 
 ```bash
-ruff check --fix .
+uv run ruff check --fix .
 ```
 
 #### Formatting (Code style)
 We follow a strict formatting standard. To automatically format your code to match the project style:
 
 ```bash
-ruff format .
+uv run ruff format .
 ```
 
 <Tip>

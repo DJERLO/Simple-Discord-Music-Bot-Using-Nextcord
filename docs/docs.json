@@ -25,9 +25,10 @@
       {
         "group": "Get Started",
         "pages": [
-          "introduction",
-          "quickstart",
-          "configuration"
+          "get-started/introduction",
+          "get-started/install-uv",
+          "get-started/quickstart",
+          "get-started/configuration"
         ]
       },
       {
@@ -74,6 +75,12 @@
           "guides/lavalink-setup",
           "guides/bot-setup",
           "guides/vps-deployment"
+        ]
+      },
+      {
+        "group": "Release Notes",
+        "pages": [
+          "changelog"
         ]
       }
     ]

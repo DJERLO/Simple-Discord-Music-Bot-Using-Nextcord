@@ -24,12 +24,36 @@ When a user runs `/play` in a Discord server, the bot searches YouTube or SoundC
 
 ## How the Pieces Fit Together
 
-```text
-Discord User  →  Nextcord (bot.py)  →  Wavelink  →  Lavalink Node  →  YouTube / SoundCloud
-                      ↑                                    ↓
-                  Slash Commands                     Decoded Audio
-                      ↑                                    ↓
-                Discord Channel  ←─────────────── Voice Channel Stream
+```mermaid placement="top-right"
+flowchart LR
+    %% Nodes
+    User((Discord User))
+    Nextcord[Nextcord bot.py]
+    Wavelink[Wavelink]
+    Lavalink[Lavalink Node]
+    Source[YouTube / SoundCloud]
+    Cmds[Slash Commands]
+    Audio[Decoded Audio]
+    DChan[Discord Channel]
+    VChan[Voice Channel Stream]
+
+    %% Connections
+    User --> Nextcord
+    Nextcord --> Wavelink
+    Wavelink --> Lavalink
+    Lavalink --> Source
+
+    %% Feedback Loops
+    Nextcord -.-> Cmds
+    Cmds -.-> DChan
+    Lavalink -.-> Audio
+    Audio -.-> VChan
+    VChan -.-> DChan
+
+    %% Styling
+    style Nextcord fill:#fc0404,stroke:#fff,color:#fff
+    style Lavalink fill:#333,stroke:#fff,color:#fff
+    style Wavelink fill:#fff,stroke:#333,color:#333
 ```
 
 You issue a slash command in Discord. Nextcord receives it in the modular startup path and delegates the playback logic to `cogs/music_commands.py`, while `cogs/events.py` manages the live player UI and queue lifecycle. Wavelink forwards the request to the Lavalink node (a Java process running inside Docker). Lavalink fetches the audio from the source, decodes it, and streams it directly into the Discord voice channel — the Python process never touches raw audio data.
@@ -47,11 +71,11 @@ You issue a slash command in Discord. Nextcord receives it in the modular startu
 ## Explore the Docs
 
 <CardGroup cols={2}>
-  <Card title="Quickstart" icon="rocket" href="/quickstart">
+  <Card title="Quickstart" icon="rocket" href="/get-started/quickstart">
     Get the bot running in minutes — clone, configure, and play your first song.
   </Card>
 
-  <Card title="Configuration" icon="gear" href="/configuration">
+  <Card title="Configuration" icon="gear" href="/get-started/configuration">
     Customize environment variables, Lavalink connection settings, and bot permissions.
   </Card>
 

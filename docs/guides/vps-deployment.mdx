@@ -37,12 +37,20 @@ sudo apt update
 sudo apt install -y python3 python3-venv python3-pip git curl
 ```
 
-Clone the project and create a virtual environment:
+Clone the project and install dependencies with `uv`:
 
 ```bash
 cd /opt
 sudo git clone https://github.com/DJERLO/Simple-Discord-Music-Bot-Using-Nextcord.git
 cd Simple-Discord-Music-Bot-Using-Nextcord
+uv sync
+```
+
+If the VPS has no compatible Python version yet, install one with `uv python install 3.13` before running `uv sync`.
+
+If you prefer a manual environment on the VPS, create a virtual environment and install the compatibility requirements file:
+
+```bash
 python3 -m venv venv
 source venv/bin/activate
 pip install -r requirements.txt
@@ -71,7 +79,7 @@ Recommended requirements for the Lavalink host:
 If you use the Docker fallback from this repo, the same `docker-compose.yml` and `application.yml` files are enough to start the node on the remote server:
 
 ```bash
-docker-compose up -d
+docker compose up -d
 ```
 
 Set the same password in both places:
@@ -168,7 +176,7 @@ When you host a music bot, you are responsible for using the service in line wit
     Confirm the .env values the bot reads at startup.
   </Card>
 
-  <Card title="Quickstart" icon="rocket" href="/quickstart">
+  <Card title="Quickstart" icon="rocket" href="/get-started/quickstart">
     Revisit the local setup path before you move to a VPS deployment.
   </Card>
 </CardGroup>
