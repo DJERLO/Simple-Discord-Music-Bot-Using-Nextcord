@@ -8,6 +8,20 @@ tags:
 mode: "default"
 ---
 
+<Update label="2026-07-02" description="v1.1.2" visible="false">
+  ### Added
+  - Added `docs/changelog.mdx` for release notes and changelog.
+  - Added `docs/get-started/install-uv.mdx` for installation instructions.
+
+  ### Changed
+  - **docs.json**: Added `changelog.mdx` to navigation structure.
+  - **configuration.mdx**, **introduction.mdx**, and **quickstart.mdx** are now on `/get-started/` folder.
+  
+  ### Fixed
+  - **Security Hotfix (CVE-2025-69277)**: Overrode `pynacl` dependency to version `>=1.6.2` to resolve a vulnerability in elliptic curve point validation.
+  - **Dependency Management**: Utilized `[tool.uv]` configuration in `pyproject.toml` to force-patch the dependency tree where upstream constraints lagged behind.
+</Update>
+
 <Update label="2026-06-30" description="v1.1.1">
   ### Added
   - **Self-Healing Infrastructure**: Autonomous Lavalink session recovery for stale sessions and node drops
