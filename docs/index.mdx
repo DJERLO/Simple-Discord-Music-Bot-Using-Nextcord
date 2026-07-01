@@ -37,16 +37,16 @@ Simple Discord Music Bot handles the full music lifecycle — from joining a voi
 
 <Steps>
   <Step title="Start the Lavalink node">
-    Run `docker-compose up -d` to spin up the pre-configured Lavalink container.
+    Run `docker compose up -d` to spin up the pre-configured Lavalink container.
   </Step>
   <Step title="Install Python dependencies">
-    Create a virtual environment and run `pip install -r requirements.txt`.
+    Run `uv sync` from the project root to install runtime and development dependencies.
   </Step>
   <Step title="Configure your bot token">
     Create a `.env` file at the project root and set `BOT_TOKEN=your_token_here`.
   </Step>
   <Step title="Run the bot">
-    Execute `python bot.py` — the bot registers all slash commands on startup and connects to Lavalink automatically.
+    Execute `uv run python bot.py` — the bot registers all slash commands on startup and connects to Lavalink automatically.
   </Step>
 </Steps>
 

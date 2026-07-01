@@ -1,0 +1,105 @@
+---
+title: "Installing uv"
+sidebarTitle: "Installing uv"
+description: "How to install uv, the recommended dependency orchestrator for this project."
+icon: "download"
+---
+## What is uv?
+uv is a dependency manager for Python projects.
+
+## Why use uv?
+uv is a high-performance dependency manager for Python projects.
+
+uv is:
+- Fast: It downloads and installs dependencies in parallel, reducing the time it takes to install them.
+- Easy: It is easy to use, with a simple command line interface.
+- Secure: It is secure, as it verifies the integrity of the dependencies it installs.
+
+## How to install uv
+We use `uv` for high-performance dependency management and project orchestration. It is the recommended tool for managing your development environment and installing dependencies.
+<Tabs>
+  <Tab title="Standalone (Recommended)">
+    ## Standalone installer
+    uv provides a standalone installer to download and install uv:
+    <Tabs>
+      <Tab title="macOS and Linux">
+        Use `curl` to download the script and execute it with `sh`:
+        ```bash
+        curl -LsSf [https://astral.sh/uv/install.sh](https://astral.sh/uv/install.sh) | sh
+        ```
+        If your system doesn't have curl, you can use `wget`:
+        ```bash
+        wget -qO- https://astral.sh/uv/install.sh | sh
+        ```
+        Request a specific version by including it in the URL:
+        ```bash
+        curl -LsSf https://astral.sh/uv/0.11.26/install.sh | sh
+        ```
+      </Tab>
+      <Tab title="Windows">
+      Use irm to download the script and execute it with iex:
+      ```powershell
+      powershell -ExecutionPolicy ByPass -c "irm [https://astral.sh/uv/install.ps1](https://astral.sh/uv/install.ps1) | iex"
+      ```
+      Changing the execution policy allows running a script from the internet.
+
+      Request a specific version by including it in the URL:
+      ```bash
+      powershell -ExecutionPolicy ByPass -c "irm https://astral.sh/uv/0.11.26/install.ps1 | iex"
+      ```
+      </Tab>
+    </Tabs>
+  </Tab>
+  <Tab title="Package Managers">
+    ## Homebrew
+    uv is available in the core Homebrew packages.
+    ```bash
+    brew install uv
+    ```
+
+    ## MacPorts
+    uv is available via MacPorts.
+    ```bash
+    sudo port install uv
+    ```
+
+    ## WinGet
+    uv is available via WinGet.
+    ```bash
+    winget install --id=astral-sh.uv  -e
+    ```
+    ## Scoop
+    uv is available via Scoop.
+    ```bash
+    scoop install main/uv
+    ```
+  </Tab>
+  <Tab title="PyPI · The Python Package Index">
+    ### PyPI
+    For convenience, uv is published to PyPI.
+
+    If installing from PyPI, we recommend installing uv into an isolated environment, e.g., with pipx:
+    ```bash
+    pipx install uv
+    ```
+    However, pip can also be used:
+
+    ```bash
+    pip install uv
+    ```
+    <Note>
+        uv ships with prebuilt distributions (wheels) for many platforms; if a wheel is not available for a given platform, uv will be built from source, which requires a Rust toolchain. See the contributing setup guide for details on building uv from source.
+    </Note>
+  </Tab>
+</Tabs>
+
+## Updating uv
+If you installed `uv` using the **Standalone** method, you can keep it updated by running:
+```bash
+uv self update
+```
+When another installation method is used, self-updates are disabled. Use the package manager's upgrade method instead. For example, with pip:
+
+```bash
+pip install --upgrade uv
+```

@@ -10,23 +10,23 @@ You can validate the modular codebase with the existing pytest suite under `test
 ## Run the full suite
 
 ```bash
-pytest tests -v
+uv run pytest tests -v
 ```
 
 ## Run focused modules
 
 ```bash
-pytest tests/test_playback.py -v
-pytest tests/test_queue.py -v
-pytest tests/test_events.py -v
-pytest tests/test_permissions.py -v
-pytest tests/test_connection.py -v
+uv run pytest tests/test_playback.py -v
+uv run pytest tests/test_queue.py -v
+uv run pytest tests/test_events.py -v
+uv run pytest tests/test_permissions.py -v
+uv run pytest tests/test_connection.py -v
 ```
 
 ## Run one specific test
 
 ```bash
-pytest tests/test_playback.py::test_previous_command_navigates_unified_history -v
+uv run pytest tests/test_playback.py::test_previous_command_navigates_unified_history -v
 ```
 
 ## Testing the `tests/` folder
@@ -80,7 +80,7 @@ The `tests/` folder contains the core suite for the modular bot:
 ## Watch for changes during development
 
 ```bash
-ptw
+uv run ptw
 ```
 
 This command watches the Python files and re-runs the suite whenever you save a change, which makes it easier to catch regressions while you work on the modular cog layout.

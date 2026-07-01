@@ -111,7 +111,7 @@ LAVALINK_PASSWORD=youshallnotpass
 The bot streams audio through Lavalink, which runs as a Docker container. Start it in the background with:
 
 ```bash
-docker-compose up -d
+docker compose up -d
 ```
 
 This pulls the official [ghcr.io/lavalink-devs/lavalink:4.2.2](ghcr.io/lavalink-devs/lavalink:4.2.2) image, mounts your local application.yml as its configuration file, and exposes port 2333 so the bot can connect. The unless-stopped restart policy means Lavalink will come back up automatically after a system reboot.
@@ -128,7 +128,6 @@ Install the necessary dependencies:
 
 #### Using uv:
 ```bash
-# Sync dependencies and create environment automatically
 uv sync
 ```
 
@@ -158,9 +157,9 @@ pip install -r requirements.txt
 | **pytest**            | Test runner for the project’s test suite                    |
 | **pytest\-asyncio**   | Async support for pytest \(used by Discord command tests\)  |
 | **pytest\-watch**     | File watcher that re\-runs tests on save                    |
--------------------------------------------------------
+
 > [!TIP]
-> During development, run ptw (pytest-watch) instead of pytest. It watches your source files and automatically re-runs the test suite every time you save a change — catching regressions the moment they’re introduced.
+> During development, run `uv run ptw` instead of directly running `ptw`. It watches your source files and automatically re-runs the test suite every time you save a change — catching regressions the moment they're introduced.
 
 ### 5. Bot Invite & Permissions
 To maintain maximum security for self-hosters and public server deployments, this bot follows the **Principle of Least Privilege**. It runs completely on native Slash Commands and does **not** require `Administrator` overrides. 

@@ -32,10 +32,10 @@ This guide walks you through every step needed to get Simple Discord Music Bot r
     cd Simple-Discord-Music-Bot-Using-Nextcord
     ```
   </Step>
-  <Step title="Create and Activate a Virtual Environment">
-    Using a virtual environment keeps the bot's dependencies isolated from your system Python installation.
+  <Step title="Create and activate your environment">
+    The recommended workflow is to use `uv`, which manages the Python environment and installs dependencies automatically.
 
-    First, create the environment:
+    If you are not using `uv`, create a virtual environment manually:
 
     ```bash
     python -m venv venv
@@ -63,28 +63,56 @@ This guide walks you through every step needed to get Simple Discord Music Bot r
 
     Your terminal prompt should now show `(venv)` to confirm the environment is active.
   </Step>
-  <Step title="Install Dependencies">
-    Install all required Python packages from `requirements.txt`:
+  <Step title="Install uv">
+    Install `uv`, the recommended Python environment manager for this project.
+
+    <CodeGroup>
+      ```powershell
+      iwr -useb https://getuv.dev/install.ps1 | iex
+      ```
+
+      ```bash
+      curl -fsSL https://getuv.dev/install.sh | bash
+      ```
+
+      ```bash
+      python -m pip install --user uv
+      ```
+    </CodeGroup>
+
+    Verify the install with:
 
     ```bash
-    pip install -r requirements.txt
+    uv --version
     ```
 
-    This installs the following packages:
+    <Tip>
+      If `uv` is not on your PATH after installation, add the user scripts directory for your OS or reopen the terminal.
+    </Tip>
+  </Step>
+  <Step title="Install Dependencies">
+    Install the project dependencies with `uv`:
 
-    | Package | Purpose |
-    | --- | --- |
-    | `nextcord` | Discord API wrapper for Python |
-    | `nextcord[voice]` | Adds voice connection support to Nextcord |
-    | `python-dotenv` | Loads environment variables from `.env` |
-    | `wavelink` | Async Lavalink client for audio control |
-    | `pytest` | Test runner for the project's test suite |
-    | `pytest-asyncio` | Async support for pytest (used by Discord command tests) |
-    | `pytest-watch` | File watcher that re-runs tests on save |
+    ```bash
+    uv sync
+    ```
+
+    This installs the runtime and development dependencies defined in `pyproject.toml`.
 
     <Tip>
-      During development, run `ptw` (pytest-watch) instead of `pytest`. It watches your source files and automatically re-runs the test suite every time you save a change — catching regressions the moment they're introduced.
+      If you need a specific Python version, install it with `uv python install 3.13` before `uv sync`. Then run `uv sync` again to ensure the project environment is fully configured.
     </Tip>
+
+    <Tip>
+      If you prefer a traditional Python environment, create and activate a virtual environment and then install dependencies from `requirements.txt`:
+      ```bash
+      python -m venv venv
+      source venv/bin/activate  # On Windows use: venv\Scripts\Activate.ps1
+      pip install -r requirements.txt
+      ```
+    </Tip>
+
+    This project still includes `requirements.txt` for compatibility, but `uv sync` is the recommended workflow.
   </Step>
   <Step title="Create the .env File">
     The bot reads your Discord bot token from a `.env` file in the project root. Create the file now:
@@ -104,7 +132,7 @@ This guide walks you through every step needed to get Simple Discord Music Bot r
     The bot streams audio through Lavalink, which runs as a Docker container. Start it in the background with:
 
     ```bash
-    docker-compose up -d
+    docker compose up -d
     ```
 
     This pulls the official `ghcr.io/lavalink-devs/lavalink:4.2.2` image, mounts your local `application.yml` as its configuration file, and exposes port `2333` so the bot can connect. The `unless-stopped` restart policy means Lavalink will come back up automatically after a system reboot.
@@ -121,7 +149,7 @@ This guide walks you through every step needed to get Simple Discord Music Bot r
     With Lavalink running and your `.env` file in place, start the bot:
 
     ```bash
-    python bot.py
+    uv run python bot.py
     ```
 
     On startup the bot will:

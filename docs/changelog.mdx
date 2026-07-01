@@ -1,0 +1,50 @@
+---
+title: "Changelog"
+sidebarTitle: "Changelog"
+description: "Release notes, updates, and version history for the Simple Discord Music Bot."
+icon: "history"
+tags:
+  - updates
+mode: "default"
+---
+
+<Update label="2026-06-30" description="v1.1.1">
+  ### Added
+  - **Self-Healing Infrastructure**: Autonomous Lavalink session recovery for stale sessions and node drops
+  - **Enhanced Logging**: Custom `ColorFormatter` for high-visibility terminal debugging.
+  - **Compliance**: Appended troubleshooting and platform compliance statements.
+
+  ### Changed
+  - **Dependency Management**: Migrated build orchestration from `pip` to `uv`.
+  - **Event-Driven Lifecycle**: Transitioned to native Wavelink persistent event listeners.
+  - **Stability**: Standardized all command endpoints to use deferred ephemeral responses.
+  - **Documentation**: Added extensive Google-style docstrings and origin tracking.
+
+  ### Fixed
+  - Resolved 300-second disconnect bugs and phantom drops caused by Wavelink inactivity tokens.
+  - Fixed track-skipping logic to prevent payload repetition.
+  - Added strict `_is_node_ready` guard checks to prevent zombie tasks when the music engine is offline.
+</Update>
+
+<Update label="2026-06-14" description="v1.1.0">
+  ### Added
+  - **Autoplay Engine**: Global per-guild memory registers for persistent preferences.
+  - **Navigation**: `/previous` track command and history tracking.
+  - **Governance**: Implemented `CODE_OF_CONDUCT.md` and `CONTRIBUTING.md` for community guidelines.
+  - **Documentation**: Overhauled docs via Mintlify with dedicated guides for VPS deployment, Linting (Ruff), and Testing (Pytest).
+  - **Testing**: Scaled suite to 38 high-fidelity cases.
+
+  ### Changed
+  - **Architecture**: Modularized from monolith into domain-specific Cogs.
+  - **Infrastructure**: Integrated parallel multi-version CI pipeline (3.12–3.14-dev).
+  - **Security**: Restricted GitHub Action permissions to `contents: read`.
+</Update>
+
+<Update label="2026-06-09" description="v1.0.1">
+  ### Changed
+  - **Security**: Hardened GitHub Action pipeline security.
+  
+  ### Fixed
+  - **Stability**: Implemented auto-disconnect for empty voice channels.
+  - **Maintenance**: Automated dependency tracking via Dependabot.
+</Update>
