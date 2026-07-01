@@ -29,10 +29,10 @@ jobs:
           node-version: '20'
 
       - name: Install Mintlify CLI
-        run: npm install -g mintlify
+        run: npm install -g mint
 
       - name: Validate Documentation
-        run: mint validate
+        run: npm run docs:validate
 
       - name: Check Broken Links
-        run: mint broken-links
+        run: npm run docs:links
