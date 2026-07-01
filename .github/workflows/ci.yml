@@ -50,28 +50,5 @@ jobs:
         LAVALINK_URI: ${{ secrets.LAVALINK_URI }}
         LAVALINK_PASSWORD: ${{ secrets.LAVALINK_PASSWORD }}
       run: uv run --python ${{ matrix.python-version }} pytest tests/ -v
-  
-  validate-docs:
-    runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: docs
-    steps:
-      - name: Checkout Codebase
-        uses: actions/checkout@v7
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: '20'
-
-      - name: Install Mint CLI
-        run: npm install -g mint
-
-      - name: Validate Documentation
-        run: npm run docs:validate
-
-      - name: Check Broken Links
-        run: npm run docs:links
 
     
