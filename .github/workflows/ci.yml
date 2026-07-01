@@ -4,12 +4,10 @@ on:
   push:
     branches: [ "main" ]
     paths:
-      - 'docs/**'
       - '.github/workflows/**'
   pull_request:
     branches: [ "main" ]
     paths:
-      - 'docs/**'
       - '.github/workflows/**'
 
 permissions:
@@ -55,6 +53,7 @@ jobs:
   
   validate-docs:
     runs-on: ubuntu-latest
+    if: github.event_name == 'pull_request' && (contains(github.event.pull_request.changed_files, 'docs/'))
     steps:
       - name: Checkout Codebase
         uses: actions/checkout@v7
