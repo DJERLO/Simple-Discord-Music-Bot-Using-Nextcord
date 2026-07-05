@@ -34,12 +34,29 @@ The QueueView class has the following methods:
 - interaction_check: Checks if the interaction
 is from the user who initiated the interaction.
 - on_timeout: Disables the buttons after the timeout.
+
+The HelpView class is a subclass of nextcord.ui.View that
+displays and navigates through a list of commands.
+
+The HelpView class has the following attributes:
+- all_commands: The list of commands to display.
+- page_size: The number of commands to display per page.
+- page: The current page number.
+- current_page: The current page number.
+- max_pages: The maximum number of pages.
+
+The HelpView class has the following methods:
+- create_embed: Returns the embed object for the current page of commands.
+- update_button_states: Updates the state of the pagination buttons.
+- prev_button: Navigates to the previous page of commands.
+- next_button: Navigates to the next page of commands.
 """
 
+import inspect
 import nextcord
 from nextcord import ButtonStyle, Embed, Interaction
 from nextcord.ui import Button, View
-
+from nextcord.ext import commands
 
 class QueueView(View):
     """
@@ -142,3 +159,69 @@ class QueueView(View):
                 await self.message.edit(view=self)
             except Exception:
                 pass
+
+class HelpView(View):
+    """
+    A view for displaying and navigating through a list of commands.
+
+    Attributes:
+    ----------
+        all_commands (list): The list of commands to display.
+        page_size (int): The number of commands to display per page.
+        page (int): The current page number.
+        current_page (int): The current page number.
+        max_pages (int): The maximum number of pages.
+
+    Methods:
+    -------
+        create_embed(self): Returns the embed object for the current page of commands.
+        update_button_states(self): Updates the state of the pagination buttons.
+        prev_button(self, button, interaction): Navigates to the previous page of commands.
+        next_button(self, button, interaction): Navigates to the next page of commands.
+    """
+    def __init__(self, all_commands: list, bot: None | commands.Bot, page_size=5):
+        super().__init__(timeout=60)
+        self.all_commands = list(all_commands)
+        self.bot = bot
+        self.page = 0
+        self.page_size = page_size
+        self.current_page = 0
+        self.max_pages = (len(self.all_commands) - 1) // page_size
+        self.update_button_states()
+
+    def create_embed(self):
+        start = self.current_page * self.page_size
+        end = start + self.page_size
+        embed = nextcord.Embed(
+            title="Bot Help Index",
+            description="Use the buttons below to navigate through the commands.",
+            color=0xfc0404
+        )
+
+        embed.set_thumbnail(url=self.bot.user.avatar.url)
+        
+        for cmd in self.all_commands[start:end]:
+            desc = inspect.cleandoc(cmd.callback.__doc__ or "No description").split('\n')[0]
+            embed.add_field(name=f"/{cmd.name}", value=desc, inline=False)
+        
+        embed.set_footer(text=f"Page {self.current_page + 1} / {self.max_pages + 1}")
+        return embed
+    
+    def update_button_states(self):
+        max_page = self.max_pages
+        self.prev_button.disabled = self.page <= 0
+        self.next_button.disabled = self.page >= max_page
+
+    @nextcord.ui.button(label="Previous", style=nextcord.ButtonStyle.secondary)
+    async def prev_button(self, button: nextcord.ui.Button, interaction: nextcord.Interaction):
+        self.page -= 1
+        self.current_page = self.page
+        self.update_button_states()
+        await interaction.response.edit_message(embed=self.create_embed(), view=self)
+
+    @nextcord.ui.button(label="Next", style=nextcord.ButtonStyle.secondary)
+    async def next_button(self, button: nextcord.ui.Button, interaction: nextcord.Interaction):
+        self.page += 1
+        self.current_page = self.page
+        self.update_button_states()
+        await interaction.response.edit_message(embed=self.create_embed(), view=self)

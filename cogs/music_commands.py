@@ -20,6 +20,7 @@ MusicCommands
     queue management, and player controls.
 """
 
+import inspect
 import random
 
 import aiohttp
@@ -133,6 +134,17 @@ class MusicCommands(commands.Cog):
 
     def __init__(self, bot: commands.Bot):
         self.bot = bot
+        self.command_list = []
+
+    @commands.Cog.listener()
+    async def on_ready(self):
+        """
+        Listen for the bot's ready event and cache all application commands.
+        
+        Usage:
+        - This is used to populate the help menu for the `/help` command.
+        """
+        self.command_list = list(self.bot.get_all_application_commands())
 
     def _is_node_ready(self):
         """
@@ -149,6 +161,40 @@ class MusicCommands(commands.Cog):
         )
 
     # ================= GENERAL COMMAND DECK =================
+
+    @nextcord.slash_command(name="help", description="View all available commands or get details on a specific one")
+    async def help(self, interaction: nextcord.Interaction, command_name: str = None):
+        """
+        Show all the available commands or get details on a specific one
+
+        Usage:
+        `/help` - Lists all available commands.
+        `/help <command_name>` - Displays details for a specific command.
+
+        Example:
+        `/help` - Lists all available commands.
+        `/help ping` - Displays details for the `ping` command.
+        
+        Note:
+        - If no command name is provided, the bot will list all available commands.
+        - If a valid command name is provided, the bot will display details for that command.
+        """
+        await interaction.response.defer(ephemeral=True)
+        
+        # 1. Fetch all commands
+        all_commands = self.command_list
+
+        if command_name:
+            # Show details for specific command
+            cmd = next((c for c in all_commands if c.name == command_name), None)
+            if cmd:
+                embed = nextcord.Embed(title=f"/{cmd.name}", description=inspect.cleandoc(cmd.callback.__doc__ or "No description provided."), color=0xfc0404)
+                await interaction.followup.send(embed=embed)
+            else:
+                await interaction.followup.send("Command not found.", ephemeral=True)
+        else:
+            view = views.HelpView(all_commands, self.bot)
+            await interaction.followup.send(embed=view.create_embed(), view=view)
 
     @nextcord.slash_command(
         name="play", description="Search and play music from YouTube or SoundCloud."
