@@ -185,7 +185,7 @@ class HelpView(View):
     """
 
     def __init__(self, all_commands: list, bot: None | commands.Bot, page_size=5):
-        super().__init__(timeout=60)
+        super().__init__(timeout=0)
         self.all_commands = list(all_commands)
         self.bot = bot
         self.page = 0
@@ -199,7 +199,10 @@ class HelpView(View):
         end = start + self.page_size
         embed = nextcord.Embed(
             title="Bot Help Index",
-            description="Use the buttons below to navigate through the commands.",
+            description=(
+                "Use `/help <command>` to get more information"
+                " about a specific command."
+            ),
             color=0xFC0404,
         )
 
@@ -211,7 +214,26 @@ class HelpView(View):
             )[0]
             embed.add_field(name=f"/{cmd.name}", value=desc, inline=False)
 
-        embed.set_footer(text=f"Page {self.current_page + 1} / {self.max_pages + 1}")
+        embed.set_footer(
+            text=(
+                f"Page {self.current_page + 1} / {self.max_pages + 1} "
+                f"| {len(self.all_commands)} commands"
+            )
+        )
+        return embed
+
+    @staticmethod
+    def get_command_embed(cmd):
+        """
+        Generates a consistent embed for a specific command detail view.
+        """
+        embed = nextcord.Embed(
+            title=f"/{cmd.name}",
+            description=inspect.cleandoc(
+                cmd.callback.__doc__ or "No description provided."
+            ),
+            color=0xFC0404,
+        )
         return embed
 
     def update_button_states(self):
