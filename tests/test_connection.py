@@ -1,3 +1,19 @@
+"""
+tests/test_connection.py
+------------------------
+Integration tests for Environment Configuration and System Connectivity.
+
+Responsibility:
+- Validates that the application has all necessary production configuration
+  loaded (Tokens, Lavalink URI/Credentials).
+- Serves as the foundation for future "System Health" checks (e.g., node
+  heartbeat monitoring and automatic reconnection verification).
+
+Usage:
+- Run all tests: `pytest`
+- Run this file: `pytest tests/test_connection.py`
+"""
+
 import os
 
 

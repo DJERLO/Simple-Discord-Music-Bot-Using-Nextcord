@@ -1,3 +1,21 @@
+"""
+tests/test_queue.py
+-------------------
+Integration tests for Queue Management and QueueView UI.
+
+Responsibility:
+- Validates the `QueueView` pagination logic, ensuring correct embed
+  slicing and button state transitions.
+- Verifies queue commands including `clear`, `shuffle`, and `remove`.
+- Ensures index-based track removal correctly identifies items in both
+  the standard queue and the asynchronous auto-queue.
+- Enforces safety guards for invalid positions and empty queue states.
+
+Usage:
+- Run all tests: `pytest`
+- Run this file: `pytest tests/test_queue.py`
+"""
+
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import nextcord

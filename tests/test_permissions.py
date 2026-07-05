@@ -1,3 +1,18 @@
+"""
+tests/test_permissions.py
+-------------------------
+Integration and Unit tests for Access Control and Voting Logic.
+
+Responsibility:
+- Validates the DJ permission system (Owner, Administrator, and custom DJ roles).
+- Ensures vote-skipping logic handles threshold calculations correctly.
+- Verifies that unauthorized users are correctly restricted via ApplicationCheckFailure.
+
+Usage:
+- Run all tests: `pytest`
+- Run this file: `pytest tests/test_permissions.py`
+"""
+
 from unittest.mock import AsyncMock, MagicMock
 
 import nextcord
