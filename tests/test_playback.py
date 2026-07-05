@@ -1,3 +1,21 @@
+"""
+tests/test_playback.py
+----------------------
+Integration and Unit tests for the Music Playback Engine.
+
+Responsibility:
+- Validates core audio controls: play, pause, resume, stop, skip, and volume.
+- Ensures robust state management for playback modes (Loop, Autoplay, History).
+- Tests guard logic for disconnected states, out-of-bounds inputs, and
+  voice channel connectivity.
+- Verifies queue manipulation (removing tracks from standard vs. auto-queues)
+  and historical navigation.
+
+Usage:
+- Run all tests: `pytest`
+- Run this file: `pytest tests/test_playback.py`
+"""
+
 from unittest.mock import AsyncMock, MagicMock, PropertyMock, patch
 
 import nextcord

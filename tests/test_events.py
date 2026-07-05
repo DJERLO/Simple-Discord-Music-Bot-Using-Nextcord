@@ -1,3 +1,20 @@
+"""
+tests/test_events.py
+--------------------
+Integration tests for AudioEvents and Wavelink Event Listeners.
+
+Responsibility:
+- Validates the bot's reaction to Wavelink lifecycle events (TrackStart, TrackEnd,
+  TrackStuck, TrackException).
+- Ensures network stability and system logging for WebSocket and Node events.
+- Manages inactivity timers, voice state tracking, and automatic cleanup of
+  stale or inactive players.
+
+Usage:
+- Run all tests: `pytest`
+- Run this file: `pytest tests/test_events.py`
+"""
+
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import nextcord
