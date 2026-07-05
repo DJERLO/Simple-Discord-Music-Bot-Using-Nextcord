@@ -140,7 +140,7 @@ class MusicCommands(commands.Cog):
     async def on_ready(self):
         """
         Listen for the bot's ready event and cache all application commands.
-        
+
         Usage:
         - This is used to populate the help menu for the `/help` command.
         """
@@ -162,7 +162,10 @@ class MusicCommands(commands.Cog):
 
     # ================= GENERAL COMMAND DECK =================
 
-    @nextcord.slash_command(name="help", description="View all available commands or get details on a specific one")
+    @nextcord.slash_command(
+        name="help",
+        description="View all available commands or get details on a specific one",
+    )
     async def help(self, interaction: nextcord.Interaction, command_name: str = None):
         """
         Show all the available commands or get details on a specific one
@@ -174,13 +177,14 @@ class MusicCommands(commands.Cog):
         Example:
         `/help` - Lists all available commands.
         `/help ping` - Displays details for the `ping` command.
-        
+
         Note:
         - If no command name is provided, the bot will list all available commands.
-        - If a valid command name is provided, the bot will display details for that command.
+        - If a valid command name is provided, the bot will display details for that
+        command.
         """
         await interaction.response.defer(ephemeral=True)
-        
+
         # 1. Fetch all commands
         all_commands = self.command_list
 
@@ -188,7 +192,13 @@ class MusicCommands(commands.Cog):
             # Show details for specific command
             cmd = next((c for c in all_commands if c.name == command_name), None)
             if cmd:
-                embed = nextcord.Embed(title=f"/{cmd.name}", description=inspect.cleandoc(cmd.callback.__doc__ or "No description provided."), color=0xfc0404)
+                embed = nextcord.Embed(
+                    title=f"/{cmd.name}",
+                    description=inspect.cleandoc(
+                        cmd.callback.__doc__ or "No description provided."
+                    ),
+                    color=0xFC0404,
+                )
                 await interaction.followup.send(embed=embed)
             else:
                 await interaction.followup.send("Command not found.", ephemeral=True)
