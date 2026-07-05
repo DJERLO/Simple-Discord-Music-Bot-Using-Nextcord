@@ -388,3 +388,54 @@ async def test_on_voice_state_update_human_leaves_empty():
     # Assert
     assert mock_vc.inactive_timeout == cog.inactive_timeout
     assert mock_vc.inactive_channel_tokens == cog.inactive_channel_tokens
+
+
+@pytest.mark.asyncio
+async def test_recover_lavalink_session_creates_new_node():
+    """
+    QA:
+    Verify that when no nodes are connected,
+    the bot creates a new one and migrates players.
+    """
+    from cogs.events import recover_lavalink_session
+
+    mock_bot = MagicMock()
+    mock_player = AsyncMock(spec=wavelink.Player)
+    mock_player.guild.id = 123
+
+    # Mock wavelink.Pool.nodes to be empty (no connected nodes)
+    with patch("wavelink.Pool.nodes", {}):
+        # Mock create_node and Pool.connect
+        with patch("core.setup.create_node") as mock_create_node:
+            mock_node = MagicMock()
+            mock_create_node.return_value = mock_node
+
+            with patch("wavelink.Pool.connect", new_callable=AsyncMock) as mock_connect:
+                await recover_lavalink_session(mock_bot, [mock_player])
+
+                # Assert that we tried to connect to a new node
+                mock_connect.assert_called_once()
+                # Assert player was moved
+                mock_player.switch_node.assert_called_once_with(mock_node)
+
+
+@pytest.mark.asyncio
+async def test_recover_lavalink_session_migration_fails_disconnects():
+    """QA: Verify that if migration fails, the player is force disconnected."""
+    from cogs.events import recover_lavalink_session
+
+    mock_bot = MagicMock()
+    mock_player = AsyncMock(spec=wavelink.Player)
+    mock_player.guild.id = 456
+    # Simulate migration failure
+    mock_player.switch_node.side_effect = Exception("Connection lost")
+
+    # Mock an existing connected node
+    mock_node = MagicMock(spec=wavelink.Node)
+    mock_node.status = wavelink.NodeStatus.CONNECTED
+    with patch("wavelink.Pool.nodes", {"test": mock_node}):
+        await recover_lavalink_session(mock_bot, [mock_player])
+
+        # Verify it attempted to switch but then force disconnected
+        mock_player.switch_node.assert_called_once()
+        mock_player.disconnect.assert_called_once_with(force=True)
