@@ -438,46 +438,6 @@ class MusicCommands(commands.Cog):
         )
 
     @nextcord.slash_command(
-        name="help", description="Show available commands and usage."
-    )
-    async def help_command(self, interaction: nextcord.Interaction):
-        """
-        QA: Render a line-length safe, explicitly structured help manual.
-
-        Parameters
-        ----------
-        interaction : :class:`nextcord.Interaction`
-            The interaction that triggered the command.
-        """
-        await interaction.response.defer(ephemeral=True)
-        help_text = (
-            "**General Commands:**\n"
-            "/join - Make the bot join your voice channel.\n"
-            "/play [song name or URL] - Play a song or add it to the queue.\n"
-            "/queue - Show the current music queue.\n"
-            "/nowplaying - Show details of the currently playing song.\n"
-            "/shuffle - Shuffle the current music queue.\n"
-            "/ping - Check the bot's latency.\n"
-            "/help - Show this help message.\n"
-            "/voteskip - Vote to skip the current song "
-            "(requires 50% majority of listeners).\n\n"
-            "**DJ Only Commands:**\n"
-            "/volume - Set the playback volume (0-100). (DJ Only)\n"
-            "/loop - Toggle looping of the current track. (DJ Only)\n"
-            "/autoplay <mode> - Set autoplay mode for continuous music. "
-            "(DJ Only)\n"
-            "/skip - Skip the currently playing song. (DJ Only)\n"
-            "/previous - Play the previous song. (DJ Only)\n"
-            "/pause - Pause the currently playing song. (DJ Only)\n"
-            "/resume - Resume the currently paused song. (DJ Only)\n"
-            "/stop - Stop playback and clear the queue. (DJ Only)\n"
-            "/clearqueue - Clear the current music queue. (DJ Only)\n"
-            "/remove [position] - Remove a specific track from the queue. "
-            "(DJ Only)\n"
-        )
-        await interaction.followup.send(help_text, ephemeral=True)
-
-    @nextcord.slash_command(
         name="join", description="Make the bot join your voice channel."
     )
     async def join(self, interaction: nextcord.Interaction):
