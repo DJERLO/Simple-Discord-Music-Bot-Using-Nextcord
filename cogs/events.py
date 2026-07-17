@@ -258,7 +258,9 @@ class AudioEvents(commands.Cog):
                 return
             # If the queue is empty, set the inactivity timeout
             else:
-                logger.warning(f"Queue empty in guild {guild_id}. Player is now idling.")
+                logger.warning(
+                    f"Queue empty in guild {guild_id}. Player is now idling."
+                )
                 logger.warning(
                     f"No songs left in queue. "
                     f"Inactivity timer set to {self.inactive_timeout}."
@@ -443,7 +445,10 @@ class AudioEvents(commands.Cog):
         """
 
         if player.playing:
-            logger.debug(f"Ignoring inactivity event for guild {player.guild.id} because it is playing.")
+            logger.debug(
+                f"Ignoring inactivity event for guild {player.guild.id} "
+                "because it is playing."
+            )
             return
 
         logger.info(

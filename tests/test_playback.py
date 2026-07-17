@@ -103,11 +103,11 @@ async def test_stop_command_success(guild_id, mock_bot_presence, cog):
 
     player = interaction.guild.voice_client = AsyncMock()
     interaction.guild.voice_client.disconnect = AsyncMock()
-    interaction.guild.voice_client.queue.clear = MagicMock()
+    interaction.guild.voice_client.queue.reset = MagicMock()
 
     await cog.stop.callback(cog, interaction)
 
-    interaction.guild.voice_client.queue.clear.assert_called_once()
+    interaction.guild.voice_client.queue.reset.assert_called_once()
     interaction.guild.voice_client.disconnect.assert_called_once()
     await cleanup_player_message(player)
     mock_bot_presence.assert_called_once_with(activity=None)
