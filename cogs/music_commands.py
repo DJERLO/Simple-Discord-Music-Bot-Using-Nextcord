@@ -830,7 +830,7 @@ class MusicCommands(commands.Cog):
             )
 
         guild_id_str = str(interaction.guild_id)
-        vc.queue.clear()
+        vc.queue.reset()
 
         if guild_id_str in embeds.ACTIVE_PLAYERS:
             await embeds.cleanup_player_message(vc)
