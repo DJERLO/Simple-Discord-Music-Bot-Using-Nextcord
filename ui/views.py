@@ -50,14 +50,37 @@ The HelpView class has the following methods:
 - update_button_states: Updates the state of the pagination buttons.
 - prev_button: Navigates to the previous page of commands.
 - next_button: Navigates to the next page of commands.
+
+The PlaybackView class is a subclass of nextcord.ui.View that
+displays and navigates through a list of commands.
+
+The PlaybackView class has the following attributes:
+- bot: The bot object.
+- player: The player object for the guild.
+- is_paused: A flag indicating whether the player is paused or not.
+
+The PlaybackView class has the following methods:
+- queue: Returns the button object for displaying the queue.
+- prev_button: Navigates to the previous track.
+- pause_resume: Pauses or resumes the player.
+- next_button: Navigates to the next track.
+- repeat: Repeats the track or queue.
 """
 
 import inspect
 
 import nextcord
+import wavelink
 from nextcord import ButtonStyle, Embed, Interaction
 from nextcord.ext import commands
 from nextcord.ui import Button, View
+
+from core.logging import get_logger
+from core.permissions import is_dj
+from core.utils import get_tracks, repeat_queue
+from ui import embeds
+
+logger = get_logger(__name__)
 
 
 class QueueView(View):
@@ -258,3 +281,191 @@ class HelpView(View):
         self.current_page = self.page
         self.update_button_states()
         await interaction.response.edit_message(embed=self.create_embed(), view=self)
+
+
+class PlaybackView(View):
+    """
+    A view for controlling playback of a music player.
+
+    Attributes:
+    ----------
+        player (wavelink.Player): The player object for the guild.
+        is_paused (bool): A flag indicating whether the player is paused or not.
+
+    Methods:
+    -------
+        previous(self, button, interaction): Navigates to the previous track.
+        pause_resume(self, button, interaction): Pauses or resumes the player.
+        next(self, button, interaction): Navigates to the next track.
+        stop(self, button, interaction): Stops the player.
+        update_button_states(self): Updates the state of the playback buttons.
+
+    """
+
+    def __init__(self, player: wavelink.Player, bot_user=None):
+        super().__init__(timeout=0)
+        self.bot = bot_user
+        self.player = player
+        self.is_paused = player.paused
+
+    @nextcord.ui.button(
+        emoji="📋", style=ButtonStyle.secondary, custom_id="queue_btn", row=0
+    )
+    async def queue(self, button: Button, interaction: Interaction):
+        """
+        Display the queue of songs
+
+        Parameters
+        ----------
+        button : :class:`nextcord.ui.Button`:
+            The button that was clicked
+        interaction : :class:`nextcord.Interaction`:
+            The interaction that triggered the button
+        """
+        vc: wavelink.Player = interaction.guild.voice_client
+        songs = await get_tracks(vc)
+        views = QueueView(songs, interaction.user, interaction.guild_id)
+        await interaction.response.send_message(
+            embed=views.get_embed(), view=views, ephemeral=True
+        )
+
+    @nextcord.ui.button(
+        emoji="⏮️", style=ButtonStyle.secondary, custom_id="prev_btn", row=0
+    )
+    async def previous(self, button: Button, interaction: Interaction):
+        """
+        Go to the previous track
+
+        Parameters
+        ----------
+        button : :class:`nextcord.ui.Button`:
+            The button that was clicked
+        interaction : :class:`nextcord.Interaction`:
+            The interaction that triggered the button
+        """
+        from cogs.music_commands import WavelinkPlayer
+
+        if not await is_dj(interaction):
+            return await interaction.response.send_message(
+                "❌ **Access Denied:** "
+                "You need the **DJ** role or **Administrator** "
+                "permissions to use this command.",
+                ephemeral=True,
+            )
+
+        vc: WavelinkPlayer = interaction.guild.voice_client
+
+        prev_track = vc.last_played_track  # Custom Property Extension
+
+        if not prev_track:
+            return await interaction.response.send_message(
+                "No previous track to play.", ephemeral=True
+            )
+
+        current_track = vc.current
+        vc.queue.put_at(0, current_track)
+
+        logger.info(
+            f"User: {interaction.user} Switching to previous track: {prev_track}"
+        )
+        await vc.play(prev_track, add_history=False)
+        # Update the embed now playing track
+        await embeds.update_player_message(vc, bot_user=None)
+
+    @nextcord.ui.button(
+        emoji="⏸️",
+        style=ButtonStyle.primary,
+        custom_id="pause_resume_btn",
+        row=0,
+    )
+    async def pause_resume(self, button: Button, interaction: Interaction):
+        """
+        Toggle play/pause state of the player
+
+        Parameters
+        ----------
+        button : :class:`nextcord.ui.Button`:
+            The button that was clicked
+        interaction : :class:`nextcord.Interaction`:
+            The interaction that triggered the button
+        """
+
+        if not await is_dj(interaction):
+            return await interaction.response.send_message(
+                "❌ **Access Denied:** "
+                "You need the **DJ** role or **Administrator** "
+                "permissions to use this command.",
+                ephemeral=True,
+            )
+
+        vc: wavelink.Player = interaction.guild.voice_client
+
+        self.is_paused = not vc.paused
+        await vc.pause(self.is_paused)
+
+        # Update button state
+        button.emoji = "▶️" if self.is_paused else "⏸️"
+        button.label = "Play" if self.is_paused else "Pause"
+
+        await interaction.response.edit_message(view=self)
+        await embeds.update_player_message(vc, bot_user=None)
+
+    @nextcord.ui.button(
+        emoji="⏭️", style=ButtonStyle.secondary, custom_id="next_btn", row=0
+    )
+    async def next(self, button: Button, interaction: Interaction):
+        """
+        Go to the next track
+
+        Parameters
+        ----------
+        button : :class:`nextcord.ui.Button`:
+            The button that was clicked
+        interaction : :class:`nextcord.Interaction`:
+            The interaction that triggered the button
+        """
+        if not await is_dj(interaction):
+            return await interaction.response.send_message(
+                "❌ **Access Denied:** "
+                "You need the **DJ** role or **Administrator** "
+                "permissions to use this command.",
+                ephemeral=True,
+            )
+
+        vc: wavelink.Player = interaction.guild.voice_client
+
+        logger.info(f"User: {interaction.user} Skipping to next track")
+
+        if vc and (vc.playing or vc.paused):
+            logger.info(
+                f"DJ {interaction.user.name} skipped the song.\n"
+                f"Song: {vc.current.title} - {vc.current.author}"
+            )
+            await vc.skip(force=False)
+
+    @nextcord.ui.button(
+        emoji="🔁", style=ButtonStyle.secondary, custom_id="repeat_btn", row=0
+    )
+    async def repeat(self, button: Button, interaction: Interaction):
+        """
+        Let's repeat the track or queue
+
+        Parameters
+        ----------
+        button : :class:`nextcord.ui.Button`:
+            The button that was clicked
+        interaction : :class:`nextcord.Interaction`:
+            The interaction that triggered the button
+        """
+        if not await is_dj(interaction):
+            return await interaction.response.send_message(
+                "❌ **Access Denied:** "
+                "You need the **DJ** role or **Administrator** "
+                "permissions to use this command.",
+                ephemeral=True,
+            )
+
+        vc: wavelink.Player = interaction.guild.voice_client
+        repeat_queue(vc, button)
+        await interaction.response.edit_message(view=self)
+        await embeds.update_player_message(vc, bot_user=None)

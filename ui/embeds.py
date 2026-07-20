@@ -28,6 +28,8 @@ Updates the player message with the current track.
 import nextcord
 import wavelink
 
+from ui.views import PlaybackView
+
 # Central Global Tracking States
 ACTIVE_PLAYERS = {}
 GUILD_AUTOPLAY_MODES = {}
@@ -155,19 +157,20 @@ async def send_player_now_playing(player: wavelink.Player, bot_user=None):
         player, player.current, is_persistent=True, bot_user=bot_user
     )
 
+    view = PlaybackView(player=wavelink.Player, bot_user=bot_user)
     # Check if we are already tracking a message for this guild
     msg = ACTIVE_PLAYERS.get(guild_id)
 
     if msg:
         try:
-            await msg.edit(embed=embed)
+            await msg.edit(embed=embed, view=view)
             return msg  # Successfully updated existing
         except (nextcord.NotFound, nextcord.HTTPException):
             # Message was deleted or inaccessible, fall through to send new
             pass
 
     # Send new if no existing message or edit failed
-    new_msg = await player.channel.send(embed=embed)
+    new_msg = await player.channel.send(embed=embed, view=view)
     ACTIVE_PLAYERS[guild_id] = new_msg
     return new_msg
 
