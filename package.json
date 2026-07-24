@@ -16,7 +16,7 @@
   "author": "",
   "license": "ISC",
   "devDependencies": {
-    "mint": "^4.2.632"
+    "mint": "^4.2.740"
   },
   "overrides": {
     "tar": "^7.5.16",
