@@ -44,7 +44,7 @@ cd Simple-Discord-Music-Bot-Using-Nextcord
 
 docker compose up -d
 uv sync
-uv run python bot.py
+uv run bot.py
 ```
 
 ### 📋 Prerequisites
@@ -187,7 +187,7 @@ Choose the workflow that matches your environment.
 If you're using `uv`, there's no need to activate a virtual environment.
 
 ```bash
-uv run python bot.py
+uv run bot.py
 ```
 
 > [!TIP]
@@ -196,7 +196,7 @@ uv run python bot.py
 > ```bash
 > uv python install 3.13
 > uv sync
-> uv run python bot.py
+> uv run bot.py
 > ```
 
 ### Option 2 — Traditional (pip)
