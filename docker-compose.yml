@@ -9,3 +9,5 @@ services:
       - ./application.yml:/opt/Lavalink/application.yml # Passes your config into the container
     environment:
       - _JAVA_OPTIONS=-Xmx512M # Allocates max 512MB RAM (perfect for a lightweight lofi bot)
+    env_file:
+      - .env

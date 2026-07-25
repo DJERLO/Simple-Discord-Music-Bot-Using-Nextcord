@@ -8,12 +8,19 @@ plugins:
       allowSearch: true
       allowDirectVideoIds: true
       allowDirectPlaylistIds: true
+      oauth:
+        # Enables the OAuth integration
+        enabled: true
+        # The OAuth client ID
+        # Leave commented the first time you run it to trigger the terminal link/code flow.
+        # Once authenticated, paste the output refresh token here to skip future prompts.
+        refreshToken: "${YOUTUBE_REFRESH_TOKEN}"
 
 lavalink:
   plugins:
     - dependency: "dev.lavalink.youtube:youtube-plugin:1.18.1"
   server:
-    password: "youshallnotpass"
+    password: "${LAVALINK_PASSWORD}"
     sources:
       youtube: false
       soundcloud: true
