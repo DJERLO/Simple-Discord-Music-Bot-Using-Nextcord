@@ -14,6 +14,7 @@ You keep the bot's secrets and connection settings in a `.env` file at the proje
 | `BOT_TOKEN` | Yes | None | Authenticates the Discord bot with the gateway and slash command API. |
 | `LAVALINK_URI` | No | `http://127.0.0.1:2333` | Points the bot at the Lavalink node it should connect to. |
 | `LAVALINK_PASSWORD` | No | `youshallnotpass` | Matches the password configured in `application.yml` for the Lavalink server. |
+| `YOUTUBE_REFRESH_TOKEN` | No | None | Optional Google OAuth2 refresh token used by the Lavalink YouTube source plugin to access YouTube APIs. |
 
 ## Recommended `.env` example
 
@@ -21,7 +22,26 @@ You keep the bot's secrets and connection settings in a `.env` file at the proje
 BOT_TOKEN=your_discord_bot_token_here
 LAVALINK_URI=http://127.0.0.1:2333
 LAVALINK_PASSWORD=youshallnotpass
+YOUTUBE_REFRESH_TOKEN=your_token_placeholder_here
 ```
+
+## YouTube OAuth / Generating a refresh token
+
+The Lavalink YouTube source plugin can use a Google OAuth2 refresh token to access YouTube. If you don't yet have a refresh token, you can generate one using Lavalink's device authorization flow:
+
+1. Temporarily remove or clear `YOUTUBE_REFRESH_TOKEN` from your `.env` so the plugin will start the device flow when Lavalink initializes.
+2. Start or restart the Lavalink container with `docker compose up -d`.
+3. Monitor the Lavalink container logs for a device code and instructions:
+
+```bash
+docker logs -f lavalink_node
+```
+
+4. Open https://accounts.google.com/o/oauth2/device in a browser and enter the device code shown in the logs. Follow the prompts to authorize the application.
+5. After successful authorization the logs will include the generated refresh token. Copy that value and save it into your `.env` as `YOUTUBE_REFRESH_TOKEN`.
+
+Security recommendation: Follow the Lavalink YouTube Source Plugin guidance and use a burner or secondary Google account when authorizing this access: https://github.com/lavalink-devs/youtube-source#plugin
+
 
 ## What to remember
 
