@@ -62,31 +62,24 @@ The utility commands give you quick diagnostics and quick references without clu
 ## `/help`
 
 <Info>
-  Sends a formatted list of every available slash command with a one-line description of each.
+  Displays a dynamic help experience that can show either the full command index or detailed usage for a specific command.
 </Info>
 
-`/help` hard-codes the list of all registered slash commands into a single ephemeral text message. It covers every command documented across the Command Reference, making it a useful quick-reference for server members who are unfamiliar with the bot.
+`/help` now adapts to the way it is used. When you run it without arguments, it shows an embed containing every available slash command. When you include the optional `command` argument, it displays the usage and description for that specific command.
 
-**Behavior**
+**Usage**
 
-- Builds a multi-line string listing all available commands and their purposes.
-- Sends the string as an ephemeral message.
-
-**Commands listed**
-
-| Command | Description shown |
+| Syntax | Description |
 | --- | --- |
-| `/play [song name or URL]` | Play a song or add it to the queue |
-| `/skip` | Skip the currently playing song |
-| `/pause` | Pause the currently playing song |
-| `/resume` | Resume the currently paused song |
-| `/shuffle` | Shuffle the current music queue |
-| `/nowplaying` | Show details of the currently playing song |
-| `/stop` | Stop playback and clear the queue |
-| `/queue` | Show the current music queue |
-| `/clearqueue` | Clear the current music queue |
-| `/ping` | Check the bot's latency |
-| `/help` | Show the help message |
+| `/help` | Show an embed with all available commands |
+| `/help command:<command_name>` | Show detailed usage and description for a specific command |
+
+**Examples**
+
+- View every available command:
+  `/help`
+- View details for a specific command:
+  `/help command:play`
 
 ---
 

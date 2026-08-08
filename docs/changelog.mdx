@@ -7,6 +7,26 @@ tags:
   - updates
 mode: "default"
 ---
+<Update label="2026-07-20" description="v1.2.0">
+  ### Added
+  - Playback buttons for the player music UI: Previous, Pause/Resume, Next, Repeat, and Queue.
+
+  ### Changed
+  - **Dynamic Help**: Updated the `/help` command to display a dynamic help experience that can show either the full command index or detailed usage for a specific command.
+  - **Permission Architecture**: Refactored the entire permission verification system by separating logic from command execution.
+    - Moved core verification logic (ownership, admin checks, and role detection) into a new dedicated module, `core/permissions.py`.
+    - Decoupled the logic from the decorator, allowing `is_dj` to be used as a standard boolean function inside commands/views or as a decorator for slash commands.
+  - **Command Flow Control**: Shifted from exception-driven permission handling to a new decorator pattern.
+    - Replaced `ApplicationCheckFailure` raising with early-return responses in decorators.
+    - This prevents `nextcord` from triggering internal "Ignoring exception" traceback logs when unauthorized users attempt to run DJ-only commands.
+  - **UI/View Stability**: Updated `PlaybackView` buttons to use the logic directly from `core/permissions.py`.
+    - Buttons now handle permission denials explicitly via `interaction.response.send_message`, ensuring a seamless user experience without cluttering the bot console.
+
+  ### Fixed
+  - **Console Noise**: Resolved the persistent "Ignoring exception" console tracebacks caused by `ApplicationCheckFailure` occurring during the pre-invocation (`can_run`) phase of slash commands.
+  - **Inactivity/Zombie Timer**: Resolved a race condition where inactivity timers would persist as "zombie" tasks after a `/stop` command or during track transitions, causing premature disconnections. 
+  - **Command Execution Reliability**: Ensured that the command pipeline is correctly halted for unauthorized users without interfering with the bot’s global error listeners.
+</Update>
 
 <Update label="2026-07-02" description="v1.1.2" visible="false">
   ### Added

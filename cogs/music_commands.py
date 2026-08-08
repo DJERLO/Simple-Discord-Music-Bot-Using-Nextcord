@@ -20,8 +20,6 @@ MusicCommands
     queue management, and player controls.
 """
 
-import random
-
 import aiohttp
 import nextcord
 import wavelink
@@ -30,6 +28,7 @@ from nextcord.ext import commands
 from core.decorators import has_dj_permissions
 from core.logging import get_logger
 from core.setup import get_diagnostic_message
+from core.utils import clear_queue, get_tracks, shuffle_queue
 from ui import embeds, views
 
 logger = get_logger(__name__)
@@ -433,28 +432,7 @@ class MusicCommands(commands.Cog):
                 "I'm not in a voice channel.", ephemeral=True
             )
 
-        songs_list = []
-        for track in vc.queue:
-            songs_list.append(
-                (
-                    track.uri,
-                    track.title,
-                    embeds.get_track_artwork(track),
-                    track.length / 1000,
-                )
-            )
-
-        if vc.autoplay == wavelink.AutoPlayMode.enabled:
-            auto_tracks = list(vc.auto_queue)
-            for track in auto_tracks[:10]:
-                songs_list.append(
-                    (
-                        track.uri,
-                        f"✨ {track.title} (Auto-Queue)",
-                        embeds.get_track_artwork(track),
-                        track.length / 1000,
-                    )
-                )
+        songs_list = await get_tracks(vc)
 
         if not songs_list:
             return await interaction.followup.send(
@@ -584,17 +562,7 @@ class MusicCommands(commands.Cog):
                 "There is nothing in the queue to clear.", ephemeral=True
             )
 
-        track = list(vc.auto_queue)
-
-        if not vc.queue.is_empty:
-            vc.queue.clear()
-
-        if not vc.auto_queue.is_empty:
-            vc.auto_queue.clear()
-
-        if track and vc.autoplay.enabled:
-            vc.auto_queue.put(track[0])
-
+        await clear_queue(vc)
         await interaction.followup.send(
             "The music queue has been cleared.", ephemeral=True
         )
@@ -622,18 +590,7 @@ class MusicCommands(commands.Cog):
                 "The queue is currently empty, nothing to shuffle.", ephemeral=True
             )
 
-        # Shuffle User Queue
-        if not vc.queue.is_empty:
-            vc.queue.shuffle()
-
-        # Shuffle Auto Queue (as we discussed, by clearing and re-adding)
-        if not vc.auto_queue.is_empty:
-            auto_tracks = list(vc.auto_queue)
-            random.shuffle(auto_tracks)
-            vc.auto_queue.clear()
-            for track in auto_tracks:
-                vc.auto_queue.put(track)
-
+        await shuffle_queue(vc)
         await interaction.followup.send("The queue has been shuffled.", ephemeral=True)
 
     @nextcord.slash_command(
@@ -830,7 +787,7 @@ class MusicCommands(commands.Cog):
             )
 
         guild_id_str = str(interaction.guild_id)
-        vc.queue.clear()
+        vc.queue.reset()
 
         if guild_id_str in embeds.ACTIVE_PLAYERS:
             await embeds.cleanup_player_message(vc)

@@ -16,7 +16,7 @@ Usage:
 - Run this file: `pytest tests/test_playback.py`
 """
 
-from unittest.mock import AsyncMock, MagicMock, PropertyMock, patch
+from unittest.mock import ANY, AsyncMock, MagicMock, PropertyMock, patch
 
 import nextcord
 import pytest
@@ -32,6 +32,7 @@ from ui.embeds import (
     cleanup_player_message,
     update_player_message,
 )
+from ui.views import PlaybackView, QueueView
 
 
 @pytest.mark.asyncio
@@ -103,11 +104,11 @@ async def test_stop_command_success(guild_id, mock_bot_presence, cog):
 
     player = interaction.guild.voice_client = AsyncMock()
     interaction.guild.voice_client.disconnect = AsyncMock()
-    interaction.guild.voice_client.queue.clear = MagicMock()
+    interaction.guild.voice_client.queue.reset = MagicMock()
 
     await cog.stop.callback(cog, interaction)
 
-    interaction.guild.voice_client.queue.clear.assert_called_once()
+    interaction.guild.voice_client.queue.reset.assert_called_once()
     interaction.guild.voice_client.disconnect.assert_called_once()
     await cleanup_player_message(player)
     mock_bot_presence.assert_called_once_with(activity=None)
@@ -583,3 +584,326 @@ async def test_vote_skip_logic_parametrized(total_humans, vote_count, should_ski
     skip_triggered = (total_listeners <= 1) or (current_votes >= required_votes)
 
     assert skip_triggered == should_skip
+
+
+@pytest.mark.asyncio
+@patch("ui.views.get_tracks", new_callable=AsyncMock)
+async def test_playback_view_queue_button(mock_get_tracks):
+    """
+    Button test:
+    Clicking the queue button should fetch tracks
+    from get_tracks and send an ephemeral queue view.
+    """
+
+    mock_player = AsyncMock(spec=wavelink.Player)
+    view = PlaybackView(player=mock_player, bot_user=None)
+
+    interaction = AsyncMock(spec=nextcord.Interaction)
+    interaction.user = AsyncMock()
+    interaction.guild_id = 123456789
+    interaction.guild.voice_client = mock_player
+    interaction.response = AsyncMock()
+
+    # Call the queue button callback
+    await view.queue.callback(interaction)
+
+    # Assertions
+    mock_get_tracks.assert_awaited_once_with(mock_player)
+    interaction.response.send_message.assert_awaited_once()
+
+    # Extract kwargs passed to send_message to verify embed and ephemeral flag
+    _, kwargs = interaction.response.send_message.call_args
+    assert kwargs.get("ephemeral") is True
+    assert kwargs.get("embed") is not None
+    assert isinstance(kwargs.get("view"), QueueView)
+
+
+@pytest.mark.asyncio
+@patch("ui.views.is_dj", new_callable=AsyncMock)
+@patch("ui.views.embeds.update_player_message", new_callable=AsyncMock)
+async def test_playback_view_previous_button_success(
+    mock_update_player_message, mock_is_dj
+):
+    """
+    Button test: Clicking previous when a previous track exists
+    should verify DJ permission, update the queue,
+    and play the previous track, and update the UI.
+    """
+    mock_is_dj.return_value = True
+
+    mock_player = AsyncMock(spec=WavelinkPlayer)
+    mock_player.last_played_track = AsyncMock()
+    mock_player.current = MagicMock()
+    mock_player.queue = MagicMock()
+    mock_player.play = AsyncMock()
+
+    view = PlaybackView(player=mock_player, bot_user=None)
+
+    interaction = AsyncMock(spec=nextcord.Interaction)
+    interaction.guild.voice_client = mock_player
+    interaction.response = AsyncMock()
+
+    await view.previous.callback(interaction)
+
+    # Assertions
+    mock_is_dj.assert_awaited_once_with(interaction)
+    mock_player.queue.put_at.assert_called_once_with(0, mock_player.current)
+    mock_player.play.assert_awaited_once_with(
+        mock_player.last_played_track, add_history=False
+    )
+    mock_update_player_message.assert_awaited_once_with(mock_player, bot_user=None)
+
+
+@pytest.mark.asyncio
+@patch("ui.views.is_dj", new_callable=AsyncMock)
+async def test_playback_view_previous_button_no_dj(mock_is_dj):
+    """
+    Button test:
+    Clicking previous without DJ permissions should deny access.
+    """
+    mock_is_dj.return_value = False
+
+    mock_player = AsyncMock(spec=WavelinkPlayer)
+    view = PlaybackView(player=mock_player, bot_user=None)
+
+    interaction = AsyncMock(spec=nextcord.Interaction)
+    interaction.response = AsyncMock()
+
+    await view.previous.callback(interaction)
+
+    mock_is_dj.assert_awaited_once_with(interaction)
+    interaction.response.send_message.assert_awaited_once()
+    _, kwargs = interaction.response.send_message.call_args
+    assert kwargs.get("ephemeral") is True
+    assert "Access Denied" in interaction.response.send_message.call_args[0][0]
+
+
+@pytest.mark.asyncio
+@patch("ui.views.is_dj", new_callable=AsyncMock)
+async def test_playback_view_previous_button_no_previous_track(mock_is_dj):
+    """
+    Button test:
+    Clicking previous when there is no previous
+    track should notify the user.
+    """
+    mock_is_dj.return_value = True
+
+    mock_player = AsyncMock(spec=WavelinkPlayer)
+    mock_player.last_played_track = None
+
+    view = PlaybackView(player=mock_player, bot_user=None)
+
+    interaction = AsyncMock(spec=nextcord.Interaction)
+    interaction.guild.voice_client = mock_player
+    interaction.response = AsyncMock()
+
+    await view.previous.callback(interaction)
+
+    interaction.response.send_message.assert_awaited_once_with(
+        "No previous track to play.", ephemeral=True
+    )
+
+
+@pytest.mark.asyncio
+@patch("ui.views.is_dj", new_callable=AsyncMock)
+@patch("ui.views.embeds.update_player_message", new_callable=AsyncMock)
+async def test_playback_view_pause_resume_button_pauses(
+    mock_update_player_message, mock_is_dj
+):
+    """
+    Button test: Clicking pause/resume when player is active
+    should pause the player, update the button UI to Play,
+    and update the player message.
+    """
+    mock_is_dj.return_value = True
+
+    mock_player = AsyncMock(spec=wavelink.Player)
+    mock_player.paused = False
+    mock_player.pause = AsyncMock()
+
+    view = PlaybackView(player=mock_player, bot_user=None)
+
+    interaction = AsyncMock(spec=nextcord.Interaction)
+    interaction.guild.voice_client = mock_player
+    interaction.response = AsyncMock()
+
+    button = AsyncMock(spec=nextcord.ui.Button)
+    button.emoji = "⏸️"
+    button.label = "Pause"
+
+    # Invoke callback directly passing the button object and interaction
+    await view.pause_resume.callback(interaction)
+
+    mock_is_dj.assert_awaited_once_with(interaction)
+    mock_player.pause.assert_awaited_once_with(True)
+    assert view.is_paused is True
+    assert button.emoji == "⏸️"
+    assert button.label == "Pause"
+    interaction.response.edit_message.assert_awaited_once_with(view=view)
+    mock_update_player_message.assert_awaited_once_with(mock_player, bot_user=None)
+
+
+@pytest.mark.asyncio
+@patch("ui.views.is_dj", new_callable=AsyncMock)
+@patch("ui.views.embeds.update_player_message", new_callable=AsyncMock)
+async def test_playback_view_pause_resume_button_resumes(
+    mock_update_player_message, mock_is_dj
+):
+    """
+    Button test: Clicking pause/resume when player is paused
+    should resume the player, update the button UI to Pause,
+    and update the player message.
+    """
+    mock_is_dj.return_value = True
+
+    mock_player = AsyncMock(spec=wavelink.Player)
+    mock_player.paused = True
+    mock_player.pause = AsyncMock()
+
+    view = PlaybackView(player=mock_player, bot_user=None)
+
+    interaction = AsyncMock(spec=nextcord.Interaction)
+    interaction.guild.voice_client = mock_player
+    interaction.response = AsyncMock()
+
+    button = AsyncMock(spec=nextcord.ui.Button)
+    button.emoji = "▶️"
+    button.label = "Play"
+
+    await view.pause_resume.callback(interaction)
+
+    mock_player.pause.assert_awaited_once_with(False)
+    assert view.is_paused is False
+    assert button.emoji == "▶️"
+    assert button.label == "Play"
+    interaction.response.edit_message.assert_awaited_once_with(view=view)
+    mock_update_player_message.assert_awaited_once_with(mock_player, bot_user=None)
+
+
+@pytest.mark.asyncio
+@patch("ui.views.is_dj", new_callable=AsyncMock)
+async def test_playback_view_pause_resume_button_no_dj(mock_is_dj):
+    """
+    Button test:
+    Clicking pause/resume without DJ permissions should deny access.
+    """
+    mock_is_dj.return_value = False
+
+    mock_player = AsyncMock(spec=wavelink.Player)
+    view = PlaybackView(player=mock_player, bot_user=None)
+
+    interaction = AsyncMock(spec=nextcord.Interaction)
+    interaction.response = AsyncMock()
+
+    await view.pause_resume.callback(interaction)
+
+    mock_is_dj.assert_awaited_once_with(interaction)
+    interaction.response.send_message.assert_awaited_once()
+    _, kwargs = interaction.response.send_message.call_args
+    assert kwargs.get("ephemeral") is True
+    assert "Access Denied" in interaction.response.send_message.call_args[0][0]
+
+
+@pytest.mark.asyncio
+@patch("ui.views.is_dj", new_callable=AsyncMock)
+async def test_playback_view_next_button_success(mock_is_dj):
+    """
+    Button test: Clicking next with DJ permissions and an active player
+    should skip the current track.
+    """
+    mock_is_dj.return_value = True
+
+    mock_player = AsyncMock(spec=wavelink.Player)
+    mock_player.playing = True
+    mock_player.paused = False
+    mock_player.current.title = "Test Song"
+    mock_player.current.author = "Test Artist"
+    mock_player.skip = AsyncMock()
+
+    view = PlaybackView(player=mock_player, bot_user=None)
+
+    interaction = AsyncMock(spec=nextcord.Interaction)
+    interaction.guild.voice_client = mock_player
+    interaction.user.name = "TestDJ"
+
+    await view.next.callback(interaction)
+
+    mock_is_dj.assert_awaited_once_with(interaction)
+    mock_player.skip.assert_awaited_once_with(force=False)
+
+
+@pytest.mark.asyncio
+@patch("ui.views.is_dj", new_callable=AsyncMock)
+async def test_playback_view_next_button_no_dj(mock_is_dj):
+    """
+    Button test: Clicking next without DJ permissions should deny access.
+    """
+    mock_is_dj.return_value = False
+
+    mock_player = AsyncMock(spec=wavelink.Player)
+    view = PlaybackView(player=mock_player, bot_user=None)
+
+    interaction = AsyncMock(spec=nextcord.Interaction)
+    interaction.response = AsyncMock()
+
+    await view.next.callback(interaction)
+
+    mock_is_dj.assert_awaited_once_with(interaction)
+    interaction.response.send_message.assert_awaited_once()
+    _, kwargs = interaction.response.send_message.call_args
+    assert kwargs.get("ephemeral") is True
+    assert "Access Denied" in interaction.response.send_message.call_args[0][0]
+
+
+@pytest.mark.asyncio
+@patch("ui.views.is_dj", new_callable=AsyncMock)
+@patch("ui.views.repeat_queue")
+@patch("ui.views.embeds.update_player_message", new_callable=AsyncMock)
+async def test_playback_view_repeat_button_success(
+    mock_update_player_message, mock_repeat_queue, mock_is_dj
+):
+    """
+    Button test:
+    Clicking repeat with DJ permissions should toggle repeat state,
+    edit the message view, and update the player message.
+    """
+    mock_is_dj.return_value = True
+
+    mock_player = AsyncMock(spec=wavelink.Player)
+    view = PlaybackView(player=mock_player, bot_user=None)
+
+    interaction = AsyncMock(spec=nextcord.Interaction)
+    interaction.guild.voice_client = mock_player
+    interaction.response = AsyncMock()
+
+    button = ANY
+
+    await view.repeat.callback(interaction)
+
+    mock_is_dj.assert_awaited_once_with(interaction)
+    mock_repeat_queue.assert_called_once_with(mock_player, button)
+    interaction.response.edit_message.assert_awaited_once_with(view=view)
+    mock_update_player_message.assert_awaited_once_with(mock_player, bot_user=None)
+
+
+@pytest.mark.asyncio
+@patch("ui.views.is_dj", new_callable=AsyncMock)
+async def test_playback_view_repeat_button_no_dj(mock_is_dj):
+    """
+    Button test: Clicking repeat without DJ permissions should deny access.
+    """
+    mock_is_dj.return_value = False
+
+    mock_player = AsyncMock(spec=wavelink.Player)
+    view = PlaybackView(player=mock_player, bot_user=None)
+
+    interaction = AsyncMock(spec=nextcord.Interaction)
+    interaction.response = AsyncMock()
+
+    await view.repeat.callback(interaction)
+
+    mock_is_dj.assert_awaited_once_with(interaction)
+    interaction.response.send_message.assert_awaited_once()
+    _, kwargs = interaction.response.send_message.call_args
+    assert kwargs.get("ephemeral") is True
+    assert "Access Denied" in interaction.response.send_message.call_args[0][0]

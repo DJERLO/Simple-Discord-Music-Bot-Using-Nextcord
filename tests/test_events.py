@@ -39,6 +39,7 @@ async def test_on_wavelink_inactive_player_cleans_up():
     guild_id_str = str(guild_id)
 
     mock_player = AsyncMock(spec=WavelinkPlayer)
+    mock_player.playing = False
     mock_player.guild.id = guild_id
     mock_player.channel = MagicMock(spec=nextcord.VoiceChannel)
     mock_player.channel.name = "Music Channel"
@@ -69,6 +70,7 @@ async def test_on_wavelink_inactive_player_clears_presence():
     bot_instance.change_presence = AsyncMock()
 
     mock_player = AsyncMock(spec=WavelinkPlayer)
+    mock_player.playing = False
     mock_player.channel = MagicMock()
     mock_player.current = None
     mock_player.queue = MagicMock()

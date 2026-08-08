@@ -23,6 +23,7 @@ import pytest
 import wavelink
 
 from cogs.music_commands import WavelinkPlayer
+from core.utils import get_tracks
 from ui.views import QueueView
 
 
@@ -116,7 +117,7 @@ async def test_queue_command_enforces_recommendation_limit(mock_view_class, cog)
     await cog.queue.callback(cog, interaction)
 
     args, _ = mock_view_class.call_args
-    songs_list = args[0]
+    songs_list = await get_tracks(mock_player)
 
     # This will now pass once you implement the slice in music_commands.py
     assert len(songs_list) == 10

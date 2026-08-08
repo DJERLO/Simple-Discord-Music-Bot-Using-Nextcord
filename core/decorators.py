@@ -9,40 +9,36 @@ has_dj_permissions()
     A custom Nextcord application command check decorator.
 """
 
-import nextcord
-from nextcord.ext import application_checks
+from functools import wraps
+
+from core.permissions import is_dj
 
 
 def has_dj_permissions():
     """
-    A custom Nextcord application command check decorator.
-    Allows execution if the user is the Server Owner, an Administrator,
-    or possesses a role explicitly named 'DJ' (case-insensitive).
+    A decorator that checks if the user has the DJ role or Administrator
+    permissions.
 
-    Returns
-    -------
-    :class:`nextcord.ext.commands.Check`
+    Returns:
+        A Nextcord application command check decorator.
     """
 
-    async def predicate(interaction: nextcord.Interaction) -> bool:
-        # 1. Bypass check: Server Owner
-        if interaction.user.id == interaction.guild.owner_id:
-            return True
+    def decorator(func):
+        @wraps(func)
+        async def wrapper(*args, **kwargs):
+            # Extract the interaction from the arguments
+            # (Slash commands pass interaction as the second argument)
+            interaction = args[1] if len(args) > 1 else None
 
-        # 2. Bypass check: Administrator permissions
-        if interaction.user.guild_permissions.administrator:
-            return True
+            if interaction and not await is_dj(interaction):
+                return await interaction.response.send_message(
+                    "❌ **Access Denied:** "
+                    "You need the **DJ** role or **Administrator** "
+                    "permissions to use this command.",
+                    ephemeral=True,
+                )
+            return await func(*args, **kwargs)
 
-        # 3. Role check: Possesses a role named "DJ" (case-insensitive)
-        has_dj_role = any(role.name.lower() == "dj" for role in interaction.user.roles)
-        if has_dj_role:
-            return True
+        return wrapper
 
-        # If all checks fail, raise an ApplicationCheckFailure
-        raise nextcord.errors.ApplicationCheckFailure(
-            "❌ **Access Denied:** "
-            "You need the **DJ** role or **Administrator** "
-            "permissions to use this command."
-        )
-
-    return application_checks.check(predicate)
+    return decorator

@@ -44,7 +44,7 @@ cd Simple-Discord-Music-Bot-Using-Nextcord
 
 docker compose up -d
 uv sync
-uv run python bot.py
+uv run bot.py
 ```
 
 ### 📋 Prerequisites
@@ -91,6 +91,38 @@ BOT_TOKEN=your_unique_bot_token_here
 LAVALINK_URI=http://127.0.0.1:2333
 LAVALINK_PASSWORD=youshallnotpass
 ```
+
+### YouTube OAuth (Lavalink YouTube plugin)
+
+If you want Lavalink to provide YouTube playback via the YouTube source plugin, the plugin requires a Google OAuth2 refresh token. Follow these steps to generate and save a refresh token securely:
+
+1. In your `.env` file, ensure `YOUTUBE_REFRESH_TOKEN` is empty or removed so Lavalink can start the device authorization flow.
+2. Start (or restart) the Lavalink container:
+
+```bash
+docker compose up -d
+```
+
+3. Watch the Lavalink container logs for the device code and instructions. Run:
+
+```bash
+docker logs -f lavalink_node
+```
+
+4. The logs will print a device code and a short instruction directing you to:
+
+	https://accounts.google.com/o/oauth2/device
+
+   Use the displayed device code in your browser and follow the OAuth prompts. The Lavalink YouTube Source Plugin documentation strongly recommends using a burner or alternative Google account for this purpose: https://github.com/lavalink-devs/youtube-source#plugin
+
+5. After you authorize the device in the browser, the Lavalink logs will print a generated refresh token. Copy that refresh token and add it to your `.env` as:
+
+```env
+YOUTUBE_REFRESH_TOKEN=the_refresh_token_you_copied
+```
+
+Security note: Treat refresh tokens like secrets—don't commit them to version control. Prefer using a separate Google account for token generation to reduce risk.
+
 
 > [!TIP]
 > The default Lavalink values work with the included `docker-compose.yml`. You only need to change them if you're connecting to a different Lavalink server.
@@ -187,7 +219,7 @@ Choose the workflow that matches your environment.
 If you're using `uv`, there's no need to activate a virtual environment.
 
 ```bash
-uv run python bot.py
+uv run bot.py
 ```
 
 > [!TIP]
@@ -196,7 +228,7 @@ uv run python bot.py
 > ```bash
 > uv python install 3.13
 > uv sync
-> uv run python bot.py
+> uv run bot.py
 > ```
 
 ### Option 2 — Traditional (pip)
